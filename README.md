@@ -76,7 +76,7 @@ yarn dev
 ### Step 4: Use DeepWiki!
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser
-2. Enter a GitHub or GitLab repository (like `facebook/react`, `vercel/next.js`, or `https://gitlab.com/gitlab-org/gitlab`)
+2. Enter a GitHub or GitLab repository (like `https://github.com/openai/codex`, `https://github.com/microsoft/autogen`, or `https://gitlab.com/gitlab-org/gitlab`)
 3. For private repositories, click "+ Add access tokens" and enter your GitHub or GitLab personal access token
 4. Click "Generate Wiki" and watch the magic happen!
 
