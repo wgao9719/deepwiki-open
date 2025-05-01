@@ -1194,8 +1194,8 @@ IMPORTANT:
             <div className="text-gray-500 dark:text-gray-500 text-sm text-center mb-6">
               <p className="mb-2">You can enter a repository in these formats:</p>
               <ul className="list-disc list-inside mb-2">
-                <li>facebook/react</li>
-                <li>https://github.com/vercel/next.js</li>
+                <li>https://github.com/AsyncFuncAI/deepwiki-open</li>
+                <li>https://github.com/openai/codex</li>
                 <li>https://gitlab.com/gitlab-org/gitlab</li>
               </ul>
             </div>
@@ -1221,7 +1221,7 @@ IMPORTANT:
       </main>
 
       <footer className="max-w-6xl mx-auto mt-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-        <p>DeepWiki - Generate Wiki from GitHub repositories</p>
+        <p>DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
       </footer>
     </div>
   );
