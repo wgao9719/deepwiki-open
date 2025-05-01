@@ -36,6 +36,11 @@ EXPOSE 8001 3000
 
 # Create a script to run both backend and frontend
 RUN echo '#!/bin/bash\n\
+# Load environment variables from .env file if it exists\n\
+if [ -f .env ]; then\n\
+  export $(grep -v "^#" .env | xargs)\n\
+fi\n\
+\n\
 # Start the API server in the background\n\
 python -m api.main &\n\
 # Start the Next.js app\n\
@@ -45,6 +50,9 @@ npm run start\n\
 # Set environment variables
 ENV PORT=8001
 ENV NODE_ENV=production
+
+# Copy .env file if it exists
+COPY .env ./
 
 # Command to run the application
 CMD ["/app/start.sh"]

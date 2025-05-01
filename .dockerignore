@@ -36,7 +36,7 @@ var/
 *.egg
 
 # Environment variables
-.env
+# .env is now allowed to be included in the build
 .env.local
 .env.development.local
 .env.test.local

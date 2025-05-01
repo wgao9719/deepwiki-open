@@ -104,10 +104,10 @@ graph TD
     F --> G
     G --> H[Interactive DeepWiki]
 
-    classDef process fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef data fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef result fill:#bfb,stroke:#333,stroke-width:2px;
-    classDef decision fill:#ffd,stroke:#333,stroke-width:2px;
+    classDef process stroke-width:2px;
+    classDef data stroke-width:2px;
+    classDef result stroke-width:2px;
+    classDef decision stroke-width:2px;
 
     class A,D data;
     class AA decision;

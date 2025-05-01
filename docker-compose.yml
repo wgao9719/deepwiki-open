@@ -6,11 +6,10 @@ services:
     ports:
       - "8001:8001"  # API port
       - "3000:3000"  # Next.js port
+    env_file:
+      - .env
     environment:
       - PORT=8001
       - NODE_ENV=production
-      # You'll need to provide these API keys when running the container
-      # - GOOGLE_API_KEY=your_google_api_key
-      # - OPENAI_API_KEY=your_openai_api_key
     volumes:
       - ~/.adalflow:/root/.adalflow  # Persist repository and embedding data
