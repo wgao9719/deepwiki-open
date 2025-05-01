@@ -38,7 +38,14 @@ EXPOSE 8001 3000
 RUN echo '#!/bin/bash\n\
 # Load environment variables from .env file if it exists\n\
 if [ -f .env ]; then\n\
-  export $(grep -v "^#" .env | xargs)\n\
+  export $(grep -v "^#" .env | xargs -r)\n\
+fi\n\
+\n\
+# Check for required environment variables\n\
+if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
+  echo "Warning: OPENAI_API_KEY and/or GOOGLE_API_KEY environment variables are not set."\n\
+  echo "These are required for DeepWiki to function properly."\n\
+  echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
 fi\n\
 \n\
 # Start the API server in the background\n\
@@ -51,8 +58,8 @@ npm run start\n\
 ENV PORT=8001
 ENV NODE_ENV=production
 
-# Copy .env file if it exists
-COPY .env ./
+# Create empty .env file (will be overridden if one exists at runtime)
+RUN touch .env
 
 # Command to run the application
 CMD ["/app/start.sh"]

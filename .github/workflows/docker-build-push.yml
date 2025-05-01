@@ -46,6 +46,9 @@ jobs:
             type=ref,event=pr
             latest
 
+      - name: Create empty .env file for build
+        run: touch .env
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

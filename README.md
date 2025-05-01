@@ -155,7 +155,7 @@ You can use Docker to run DeepWiki:
 # Pull the image from GitHub Container Registry
 docker pull ghcr.io/asyncfuncai/deepwiki-open:latest
 
-# Run the container
+# Run the container with environment variables
 docker run -p 8001:8001 -p 3000:3000 \
   -e GOOGLE_API_KEY=your_google_api_key \
   -e OPENAI_API_KEY=your_openai_api_key \
@@ -168,6 +168,41 @@ Or use the provided `docker-compose.yml` file:
 ```bash
 # Edit the .env file with your API keys first
 docker-compose up
+```
+
+#### Using a .env file with Docker
+
+You can also mount a .env file to the container:
+
+```bash
+# Create a .env file with your API keys
+echo "GOOGLE_API_KEY=your_google_api_key" > .env
+echo "OPENAI_API_KEY=your_openai_api_key" >> .env
+
+# Run the container with the .env file mounted
+docker run -p 8001:8001 -p 3000:3000 \
+  -v $(pwd)/.env:/app/.env \
+  -v ~/.adalflow:/root/.adalflow \
+  ghcr.io/asyncfuncai/deepwiki-open:latest
+```
+
+#### Building the Docker image locally
+
+If you want to build the Docker image locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/AsyncFuncAI/deepwiki-open.git
+cd deepwiki-open
+
+# Build the Docker image
+docker build -t deepwiki-open .
+
+# Run the container
+docker run -p 8001:8001 -p 3000:3000 \
+  -e GOOGLE_API_KEY=your_google_api_key \
+  -e OPENAI_API_KEY=your_openai_api_key \
+  deepwiki-open
 ```
 
 ### API Server Details
