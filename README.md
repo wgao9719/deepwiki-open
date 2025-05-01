@@ -9,6 +9,11 @@
 3. Create visual diagrams to explain how everything works
 4. Organize it all into an easy-to-navigate wiki
 
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/sheing)
+
+[![Twitter/X](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://x.com/sashimikun_void)
+[![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/VQMBGR8u5v)
+
 ## ✨ Features
 
 - **Instant Documentation**: Turn any GitHub or GitLab repo into a wiki in seconds
