@@ -6,6 +6,9 @@ mermaid.initialize({
   startOnLoad: true,
   theme: 'neutral',
   securityLevel: 'loose',
+  suppressErrorRendering: true,
+  logLevel: 'error',
+  maxTextSize: 100000, // Increase text size limit
   themeCSS: `
     /* General styles for all diagrams */
     .node rect, .node circle, .node ellipse, .node polygon, .node path {
@@ -276,10 +279,19 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
 
+  // Track if we've already attempted to fix this chart
+  const chartRef = useRef(chart);
+
+  // Reset retry attempt state when chart content changes
+  useEffect(() => {
+    if (chartRef.current !== chart) {
+      setRetryAttempted(false);
+      chartRef.current = chart;
+    }
+  }, [chart]);
+
   useEffect(() => {
     if (!chart) return;
-
-    setRetryAttempted(false);
 
     let isMounted = true;
 
@@ -307,8 +319,9 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
 
         const errorMessage = err instanceof Error ? err.message : String(err);
 
+        // Only attempt to fix once per chart (max 1 attempt)
         if (isMounted && !retryAttempted && onMermaidError) {
-          console.log('Attempting to auto-fix Mermaid diagram via API...');
+          console.log('Attempting to auto-fix Mermaid diagram via API (one-time attempt)...');
           setRetryAttempted(true);
           onMermaidError(errorMessage, chart);
           return;
@@ -353,7 +366,7 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
     return () => {
       isMounted = false;
     };
-  }, [chart, onMermaidError]);
+  }, [chart, onMermaidError, retryAttempted]);
 
   const handleDiagramClick = () => {
     if (!error && svg) {
@@ -363,9 +376,34 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
 
   if (error) {
     return (
-      <div className={`border border-red-300 dark:border-red-800 rounded-md p-2 ${className}`}>
-        <div className="text-red-500 dark:text-red-400 text-xs mb-1">Error rendering diagram</div>
+      <div className={`border border-red-300 dark:border-red-800 rounded-md p-3 ${className}`}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-red-500 dark:text-red-400 text-xs font-medium flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Diagram rendering error
+          </div>
+          {onMermaidError && !retryAttempted && (
+            <button
+              onClick={() => {
+                if (onMermaidError) {
+                  setRetryAttempted(true);
+                  onMermaidError("Manual retry requested", chart);
+                }
+              }}
+              className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-1 rounded hover:bg-red-200 dark:hover:bg-red-800/30"
+            >
+              Try to fix
+            </button>
+          )}
+        </div>
         <div ref={mermaidRef} className="text-xs overflow-auto"></div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {retryAttempted ?
+            "The diagram couldn't be fixed automatically. Please check the syntax." :
+            "The diagram contains syntax errors. You can try to fix it or view the simplified version."}
+        </div>
       </div>
     );
   }
@@ -410,15 +448,79 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
 };
 
 const preprocessMermaidChart = (chartText: string): string => {
-    return chartText
-      .replace(/\|([^|]+)\|>/g, '|"$1"|>')
-      .replace(/>\|([^|]+)\|>/g, '>|"$1"|>')
-      .replace(/>\|([^|]+)\|/g, '>|"$1"|')
-      .replace(/-->\|([^|]+)\|/g, '-->|"$1"|')
-      .replace(/-->\|([^|]+)\|>/g, '-->|"$1"|>');
+    // Remove any mermaid version text that might be causing issues
+    let processedChart = chartText.replace(/mermaid version [0-9.]+/g, '');
+
+    // First, check if the chart has a valid type declaration at the beginning
+    const validTypes = ['graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'gantt', 'pie', 'er'];
+    const firstLine = processedChart.trim().split('\n')[0].trim();
+    const hasValidType = validTypes.some(type => firstLine.startsWith(type));
+
+    if (!hasValidType) {
+      // If no valid type is found, default to graph TD
+      console.warn('No valid diagram type found, defaulting to graph TD');
+      processedChart = `graph TD\n${processedChart}`;
+    }
+
+    // Fix common syntax errors
+    return processedChart
+      // Fix labels in links that are missing quotes
+      .replace(/\|([^|"]+)\|>/g, '|"$1"|>')
+      .replace(/>\|([^|"]+)\|>/g, '>|"$1"|>')
+      .replace(/>\|([^|"]+)\|/g, '>|"$1"|')
+      .replace(/-->\|([^|"]+)\|/g, '-->|"$1"|')
+      .replace(/-->\|([^|"]+)\|>/g, '-->|"$1"|>')
+
+      // Fix missing quotes in node labels
+      .replace(/\[([^\]"]+)\]/g, (match, p1) => {
+        // Only add quotes if they're not already there
+        if (p1.includes('"')) return match;
+        return `["${p1}"]`;
+      })
+
+      // Fix common syntax errors in sequence diagrams
+      .replace(/([A-Za-z0-9_-]+)(-+>|-->>|-->)([A-Za-z0-9_-]+):/g, '$1$2$3: ')
+
+      // Fix missing spaces after colons in notes
+      .replace(/note (left|right|over) ([^:]+):([^\s])/g, 'note $1 $2: $3')
+
+      // Fix arrows with incorrect syntax
+      .replace(/([A-Za-z0-9_-]+)\s*--([A-Za-z0-9_-]+)/g, '$1-->$2')
+
+      // Remove any invalid characters that might cause parsing issues
+      .replace(/[\u2018\u2019\u201C\u201D]/g, '"'); // Replace smart quotes with straight quotes
   };
 
 const createEmergencyFallbackChart = (originalChart: string): string => {
+  // Try to determine the chart type
+  const firstLine = originalChart.trim().split('\n')[0].trim();
+  const isSequenceDiagram = firstLine.includes('sequenceDiagram');
+  const isClassDiagram = firstLine.includes('classDiagram');
+
+  if (isSequenceDiagram) {
+    // Create a simple sequence diagram fallback
+    return `sequenceDiagram
+    participant A as System A
+    participant B as System B
+    Note over A,B: Diagram had syntax errors
+    A->>B: Request
+    B-->>A: Response`;
+  }
+
+  if (isClassDiagram) {
+    // Create a simple class diagram fallback
+    return `classDiagram
+    class Component {
+      +render()
+    }
+    class Error {
+      +message: string
+    }
+    Component <|-- Error
+    note for Error "Diagram had syntax errors"`;
+  }
+
+  // For flowcharts and other diagrams, extract nodes if possible
   const nodeRegex = /([A-Za-z0-9_]+)(?:\[["']?(.*?)["']?\])?/g;
   const nodes = new Set<string>();
   let match;
@@ -431,18 +533,29 @@ const createEmergencyFallbackChart = (originalChart: string): string => {
 
   const nodesList = Array.from(nodes).slice(0, 10);
   if (nodesList.length === 0) {
-    return 'graph TD\nA[Error: Could not extract nodes]';
+    // Create a generic error diagram
+    return `graph TD
+    A["Error: Could not render diagram"]
+    B["Please check syntax"]
+    A-->B
+    style A fill:#f9d0c4,stroke:#f44336
+    style B fill:#c4f9d0,stroke:#4caf50`;
   }
 
+  // Create a simplified flowchart with the extracted nodes
   let fallbackChart = 'graph TD\n';
 
   nodesList.forEach(node => {
-    fallbackChart += `${node}[${node}]\n`;
+    fallbackChart += `${node}["${node}"]\n`;
   });
 
   for (let i = 0; i < nodesList.length - 1; i++) {
     fallbackChart += `${nodesList[i]}-->${nodesList[i + 1]}\n`;
   }
+
+  // Add a note about the error
+  fallbackChart += `note["Diagram had syntax errors and was simplified"]\n`;
+  fallbackChart += `style note fill:#fff8e1,stroke:#ffc107\n`;
 
   return fallbackChart;
 };

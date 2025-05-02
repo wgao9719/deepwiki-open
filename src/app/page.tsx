@@ -70,7 +70,7 @@ const wikiStyles = `
 
 export default function Home() {
   // Separate states for better management
-  const [repositoryInput, setRepositoryInput] = useState('facebook/react');
+  const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
   // Store repo info for UI display and other non-callback purposes
   const [repoInfo, setRepoInfo] = useState({ owner: '', repo: '', type: 'github' });
   const [isLoading, setIsLoading] = useState(false);
@@ -291,7 +291,8 @@ The wiki page should:
 3. Explain how this component/feature fits into the overall architecture
 4. Include any setup or usage instructions if applicable
 5. Be formatted in Markdown for easy reading
-6. IMPORTANT: Use Mermaid diagrams where appropriate to visualize:
+6. If it has code blocks, make sure they are properly formatted with language identifiers (e.g., \`\`\`python) and start in a new line with no empty spaces.
+7. IMPORTANT: Use Mermaid diagrams where appropriate to visualize:
    - Component relationships
    - Data flow
    - Architecture
@@ -974,40 +975,80 @@ IMPORTANT:
     li({ children, ...props }: { children?: React.ReactNode }) {
       return <li className="mb-1 text-xs" {...props}>{children}</li>;
     },
-    code({ inline, className, children, ...props }: {
+
+    code(props: {
       inline?: boolean;
       className?: string;
       children?: React.ReactNode;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [key: string]: any; // Using any here as it's required for ReactMarkdown components
     }) {
+      const { inline, className, children, ...otherProps } = props;
       const match = /language-(\w+)/.exec(className || '');
       const codeContent = children ? String(children).replace(/\n$/, '') : '';
 
-      // Special handling for mermaid code blocks
+      // Handle Mermaid diagrams
       if (!inline && match && match[1] === 'mermaid') {
         return (
-          <Mermaid
-            chart={codeContent}
-            className="w-full max-w-full my-4"
-            onMermaidError={handleMermaidError}
-          />
+          <div className="my-6 bg-gray-50 dark:bg-gray-800 rounded-md overflow-hidden">
+            <Mermaid
+              chart={codeContent}
+              className="w-full max-w-full"
+              onMermaidError={handleMermaidError}
+            />
+          </div>
         );
       }
 
-      return !inline && match ? (
-        <SyntaxHighlighter
-          language={match[1]}
-          style={tomorrow}
-          className="!text-xs"
-          PreTag="div"
-          wrapLines={true}
-          showLineNumbers={true}
-          wrapLongLines={true}
-          {...props}
+      // Handle math blocks
+      if (!inline && match && match[1] === 'math') {
+        return (
+          <div className="my-4 p-4 bg-gray-50 dark:bg-gray-800 overflow-x-auto rounded-md">
+            {children}
+          </div>
+        );
+      }
+
+      // Handle regular code blocks with syntax highlighting
+      if (!inline && match) {
+        return (
+          <div className="my-4 rounded-md overflow-hidden">
+            <div className="flex items-center justify-between bg-gray-200 dark:bg-gray-700 px-4 py-1 text-xs text-gray-700 dark:text-gray-300">
+              <span>{match[1]}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(codeContent)}
+                className="hover:bg-gray-300 dark:hover:bg-gray-600 p-1 rounded"
+                aria-label="Copy code"
+                title="Copy code"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
+                  <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
+                </svg>
+              </button>
+            </div>
+            <SyntaxHighlighter
+              language={match[1]}
+              style={tomorrow}
+              className="!text-xs"
+              customStyle={{ margin: 0, borderRadius: '0 0 0.375rem 0.375rem' }}
+              showLineNumbers={true}
+              wrapLines={true}
+              wrapLongLines={true}
+              {...otherProps}
+            >
+              {codeContent}
+            </SyntaxHighlighter>
+          </div>
+        );
+      }
+
+      // Handle inline code
+      return (
+        <code
+          className={`${className} font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-pink-500 dark:text-pink-400 text-xs`}
+          {...otherProps}
         >
-          {codeContent}
-        </SyntaxHighlighter>
-      ) : (
-        <code className={`${className} bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded font-mono !text-xs`} {...props}>
           {children}
         </code>
       );
