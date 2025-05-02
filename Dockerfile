@@ -50,8 +50,9 @@ fi\n\
 \n\
 # Start the API server in the background\n\
 python -m api.main &\n\
-# Start the Next.js app\n\
-npm run start\n\
+\n\
+# Start the Next.js app on port 3000 explicitly\n\
+npm run start -- -p 3000\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
