@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useState, useMemo } from 'react';
-import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaDownload, FaFileExport } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -85,6 +85,8 @@ export default function Home() {
   const [currentPageId, setCurrentPageId] = useState<string | undefined>();
   const [generatedPages, setGeneratedPages] = useState<Record<string, WikiPage>>({});
   const [pagesInProgress, setPagesInProgress] = useState(new Set<string>());
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // State to store original markdown for potential retries
   const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
@@ -871,6 +873,84 @@ IMPORTANT:
     }
   }, [repositoryInput, determineWikiStructure, githubToken, gitlabToken]);
 
+  // Function to export wiki content
+  const exportWiki = useCallback(async (format: 'markdown' | 'json') => {
+    if (!wikiStructure || Object.keys(generatedPages).length === 0) {
+      setExportError('No wiki content to export');
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      setExportError(null);
+      setLoadingMessage(`Exporting wiki as ${format}...`);
+
+      // Prepare the pages for export
+      const pagesToExport = wikiStructure.pages.map(page => {
+        // Use the generated content if available, otherwise use an empty string
+        const content = generatedPages[page.id]?.content || 'Content not generated';
+        return {
+          ...page,
+          content
+        };
+      });
+
+      // Determine which token to use based on the repository type
+      const repoUrl = repoInfo.type === 'github'
+        ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
+        : `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`;
+
+      // Make API call to export wiki
+      const response = await fetch('http://localhost:8001/export/wiki', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          repo_url: repoUrl,
+          pages: pagesToExport,
+          format
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No error details available');
+        throw new Error(`Error exporting wiki: ${response.status} - ${errorText}`);
+      }
+
+      // Get the filename from the Content-Disposition header if available
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${repoInfo.repo}_wiki.${format === 'markdown' ? 'md' : 'json'}`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename=(.+)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/"/g, '');
+        }
+      }
+
+      // Convert the response to a blob and download it
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      console.log(`Wiki exported successfully as ${format}`);
+    } catch (err) {
+      console.error('Error exporting wiki:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error during export';
+      setExportError(errorMessage);
+    } finally {
+      setIsExporting(false);
+      setLoadingMessage(undefined);
+    }
+  }, [wikiStructure, generatedPages, repoInfo]);
+
   // Define MarkdownComponents INSIDE the Home component function
   const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = useMemo(() => ({
     p({ children, ...props }: { children?: React.ReactNode }) {
@@ -1027,7 +1107,10 @@ IMPORTANT:
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-            <p className="text-gray-800 dark:text-gray-200 text-center mb-2">{loadingMessage || 'Loading...'}</p>
+            <p className="text-gray-800 dark:text-gray-200 text-center mb-2">
+              {loadingMessage || 'Loading...'}
+              {isExporting && ' Please wait while we prepare your download...'}
+            </p>
 
             {/* Progress bar for page generation */}
             {wikiStructure && (
@@ -1099,6 +1182,36 @@ IMPORTANT:
                   {repoInfo.owner}/{repoInfo.repo}
                 </a>
               </div>
+
+              {/* Export buttons */}
+              {Object.keys(generatedPages).length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Export Wiki</h4>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => exportWiki('markdown')}
+                      disabled={isExporting}
+                      className="flex items-center text-xs px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FaDownload className="mr-2" />
+                      Export as Markdown
+                    </button>
+                    <button
+                      onClick={() => exportWiki('json')}
+                      disabled={isExporting}
+                      className="flex items-center text-xs px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FaFileExport className="mr-2" />
+                      Export as JSON
+                    </button>
+                  </div>
+                  {exportError && (
+                    <div className="mt-2 text-xs text-red-500">
+                      {exportError}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <h4 className="text-md font-semibold text-gray-800 dark:text-gray-300 mb-2">Pages</h4>
               <ul className="space-y-2">
