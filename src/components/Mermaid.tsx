@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+// We'll use dynamic import for svg-pan-zoom
 
 // Initialize mermaid with defaults
 mermaid.initialize({
@@ -9,6 +10,14 @@ mermaid.initialize({
   suppressErrorRendering: true,
   logLevel: 'error',
   maxTextSize: 100000, // Increase text size limit
+  htmlLabels: true,
+  flowchart: {
+    htmlLabels: true,
+    curve: 'basis',
+    nodeSpacing: 50,
+    rankSpacing: 50,
+    padding: 15,
+  },
   themeCSS: `
     /* General styles for all diagrams */
     .node rect, .node circle, .node ellipse, .node polygon, .node path {
@@ -124,8 +133,24 @@ mermaid.initialize({
 
     /* Force all text elements to be white */
     text[text-anchor][dominant-baseline],
-    text[text-anchor][alignment-baseline] {
+    text[text-anchor][alignment-baseline],
+    .nodeLabel,
+    .edgeLabel,
+    .label,
+    text {
       fill: #fff !important;
+    }
+
+    /* Add clickable element styles */
+    .clickable {
+      transition: transform 0.2s ease;
+    }
+    .clickable:hover {
+      transform: scale(1.05);
+      cursor: pointer;
+    }
+    .clickable:hover > * {
+      filter: brightness(0.85);
     }
   `,
   fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -136,6 +161,7 @@ interface MermaidProps {
   chart: string;
   className?: string;
   onMermaidError?: (errorMessage: string, originalChart: string) => void;
+  zoomingEnabled?: boolean;
 }
 
 // Full screen modal component for the diagram
@@ -266,12 +292,13 @@ const FullScreenModal: React.FC<{
   );
 };
 
-const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError }) => {
+const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError, zoomingEnabled = false }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [retryAttempted, setRetryAttempted] = useState(false);
   const mermaidRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(`mermaid-${Math.random().toString(36).substring(2, 9)}`);
   const isDarkModeRef = useRef(
     typeof window !== 'undefined' &&
@@ -289,6 +316,43 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
       chartRef.current = chart;
     }
   }, [chart]);
+
+  // Initialize pan-zoom functionality when SVG is rendered
+  useEffect(() => {
+    if (svg && zoomingEnabled && containerRef.current) {
+      const initializePanZoom = async () => {
+        const svgElement = containerRef.current?.querySelector("svg");
+        if (svgElement) {
+          // Remove any max-width constraints
+          svgElement.style.maxWidth = "none";
+          svgElement.style.width = "100%";
+          svgElement.style.height = "100%";
+
+          try {
+            // Dynamically import svg-pan-zoom only when needed in the browser
+            const svgPanZoom = (await import("svg-pan-zoom")).default;
+
+            svgPanZoom(svgElement, {
+              zoomEnabled: true,
+              controlIconsEnabled: true,
+              fit: true,
+              center: true,
+              minZoom: 0.1,
+              maxZoom: 10,
+              zoomScaleSensitivity: 0.3,
+            });
+          } catch (error) {
+            console.error("Failed to load svg-pan-zoom:", error);
+          }
+        }
+      };
+
+      // Wait for the SVG to be rendered
+      setTimeout(() => {
+        void initializePanZoom();
+      }, 100);
+    }
+  }, [svg, zoomingEnabled]);
 
   useEffect(() => {
     if (!chart) return;
@@ -314,6 +378,11 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
         }
 
         setSvg(processedSvg);
+
+        // Call mermaid.contentLoaded to ensure proper initialization
+        setTimeout(() => {
+          mermaid.contentLoaded();
+        }, 50);
       } catch (err) {
         console.error('Mermaid rendering error:', err);
 
@@ -418,31 +487,42 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
 
   return (
     <>
-      <div className="relative group">
+      <div
+        ref={containerRef}
+        className={`w-full max-w-full ${zoomingEnabled ? "h-[600px] p-4" : ""}`}
+      >
         <div
-          className={`flex justify-center overflow-auto text-center my-2 cursor-pointer hover:shadow-md transition-shadow duration-200 rounded-md ${className}`}
-          dangerouslySetInnerHTML={{ __html: svg }}
-          onClick={handleDiagramClick}
-          title="Click to view fullscreen"
-        />
+          className={`relative group ${zoomingEnabled ? "h-full rounded-lg border-2 border-black" : ""}`}
+        >
+          <div
+            className={`flex justify-center overflow-auto text-center my-2 cursor-pointer hover:shadow-md transition-shadow duration-200 rounded-md ${className} ${zoomingEnabled ? "h-full" : ""}`}
+            dangerouslySetInnerHTML={{ __html: svg }}
+            onClick={zoomingEnabled ? undefined : handleDiagramClick}
+            title={zoomingEnabled ? undefined : "Click to view fullscreen"}
+          />
 
-        <div className="absolute top-2 right-2 bg-gray-700/70 dark:bg-gray-900/70 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1.5 text-xs shadow-md pointer-events-none">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            <line x1="11" y1="8" x2="11" y2="14"></line>
-            <line x1="8" y1="11" x2="14" y2="11"></line>
-          </svg>
-          <span>Click to zoom</span>
+          {!zoomingEnabled && (
+            <div className="absolute top-2 right-2 bg-gray-700/70 dark:bg-gray-900/70 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1.5 text-xs shadow-md pointer-events-none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+              <span>Click to zoom</span>
+            </div>
+          )}
         </div>
       </div>
 
-      <FullScreenModal
-        isOpen={isFullscreen}
-        onClose={() => setIsFullscreen(false)}
-      >
-        <div dangerouslySetInnerHTML={{ __html: svg }} />
-      </FullScreenModal>
+      {!zoomingEnabled && (
+        <FullScreenModal
+          isOpen={isFullscreen}
+          onClose={() => setIsFullscreen(false)}
+        >
+          <div dangerouslySetInnerHTML={{ __html: svg }} />
+        </FullScreenModal>
+      )}
     </>
   );
 };

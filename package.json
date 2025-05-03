@@ -18,7 +18,8 @@
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^15.6.1",
     "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "svg-pan-zoom": "^3.6.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

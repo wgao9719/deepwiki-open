@@ -965,25 +965,25 @@ IMPORTANT:
   // Define MarkdownComponents INSIDE the Home component function
   const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = useMemo(() => ({
     p({ children, ...props }: { children?: React.ReactNode }) {
-      return <p className="mb-1 text-xs" {...props}>{children}</p>;
+      return <p className="mb-1 text-xs dark:text-white" {...props}>{children}</p>;
     },
     h1({ children, ...props }: { children?: React.ReactNode }) {
-      return <h1 className="text-base font-bold mt-3 mb-1" {...props}>{children}</h1>;
+      return <h1 className="text-base font-bold mt-3 mb-1 dark:text-white" {...props}>{children}</h1>;
     },
     h2({ children, ...props }: { children?: React.ReactNode }) {
-      return <h2 className="text-sm font-bold mt-2 mb-1" {...props}>{children}</h2>;
+      return <h2 className="text-sm font-bold mt-2 mb-1 dark:text-white" {...props}>{children}</h2>;
     },
     h3({ children, ...props }: { children?: React.ReactNode }) {
-      return <h3 className="text-xs font-bold mt-2 mb-1" {...props}>{children}</h3>;
+      return <h3 className="text-xs font-bold mt-2 mb-1 dark:text-white" {...props}>{children}</h3>;
     },
     ul({ children, ...props }: { children?: React.ReactNode }) {
-      return <ul className="list-disc pl-4 mb-2 text-xs" {...props}>{children}</ul>;
+      return <ul className="list-disc pl-4 mb-2 text-xs dark:text-white" {...props}>{children}</ul>;
     },
     ol({ children, ...props }: { children?: React.ReactNode }) {
-      return <ol className="list-decimal pl-4 mb-2 text-xs" {...props}>{children}</ol>;
+      return <ol className="list-decimal pl-4 mb-2 text-xs dark:text-white" {...props}>{children}</ol>;
     },
     li({ children, ...props }: { children?: React.ReactNode }) {
-      return <li className="mb-1 text-xs" {...props}>{children}</li>;
+      return <li className="mb-1 text-xs dark:text-white" {...props}>{children}</li>;
     },
 
     code(props: {
@@ -1005,6 +1005,7 @@ IMPORTANT:
               chart={codeContent}
               className="w-full max-w-full"
               onMermaidError={handleMermaidError}
+              zoomingEnabled={true}
             />
           </div>
         );
