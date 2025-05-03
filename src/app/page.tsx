@@ -8,6 +8,7 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import Mermaid from '../components/Mermaid';
+import ThemeToggle from '@/components/theme-toggle';
 
 // Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
@@ -1387,8 +1388,9 @@ IMPORTANT:
         )}
       </main>
 
-      <footer className="max-w-6xl mx-auto mt-8 text-center text-gray-500 dark:text-gray-400 text-sm h-fit">
-        <p>DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
+      <footer className="max-w-6xl mx-auto mt-8 flex justify-between items-center gap-4 text-center text-gray-500 dark:text-gray-400 text-sm h-fit w-full">
+        <p className="flex-1">DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
+        <ThemeToggle />
       </footer>
     </div>
   );
