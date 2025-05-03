@@ -8,7 +8,7 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      className="cursor-pointer hover:bg-foreground/10 dark:hover:bg-background/10 bg-inherit text-[#37352f] dark:text-[#ffffffcf] hover:bg-hover-background active:bg-active-background rounded-md p-1.5 [transition:background_20ms_ease-in,_color_0.15s]"
+      className="theme-toggle-button cursor-pointer hover:bg-foreground/10 dark:hover:bg-background/10 bg-inherit text-[var(--foreground)] dark:text-[var(--background)] hover:bg-hover-background active:bg-active-background rounded-md p-1.5 transition-all duration-200"
       title="Toggle theme"
       aria-label="Toggle theme"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
