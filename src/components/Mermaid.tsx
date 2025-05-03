@@ -31,7 +31,10 @@ mermaid.initialize({
     }
     .edgeLabel {
       background-color: transparent;
-      color: #fff;
+      color: #000;
+      p {
+        background-color: transparent !important;
+      }
     }
     .label {
       color: #fff;
