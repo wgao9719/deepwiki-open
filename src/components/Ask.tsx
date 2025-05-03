@@ -27,6 +27,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hasResponse, setHasResponse] = useState(false);
 
   // Research navigation state
