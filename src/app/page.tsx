@@ -2,13 +2,10 @@
 
 import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaDownload, FaFileExport } from 'react-icons/fa';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { tomorrow } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import Mermaid from '../components/Mermaid';
 import ThemeToggle from '@/components/theme-toggle';
+import Markdown from '@/components/Markdown';
+import Ask from '@/components/Ask';
 
 // Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
@@ -962,109 +959,7 @@ IMPORTANT:
     }
   }, [wikiStructure, generatedPages, repoInfo]);
 
-  // Define MarkdownComponents INSIDE the Home component function
-  const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = useMemo(() => ({
-    p({ children, ...props }: { children?: React.ReactNode }) {
-      return <p className="mb-1 text-xs dark:text-white" {...props}>{children}</p>;
-    },
-    h1({ children, ...props }: { children?: React.ReactNode }) {
-      return <h1 className="text-base font-bold mt-3 mb-1 dark:text-white" {...props}>{children}</h1>;
-    },
-    h2({ children, ...props }: { children?: React.ReactNode }) {
-      return <h2 className="text-sm font-bold mt-2 mb-1 dark:text-white" {...props}>{children}</h2>;
-    },
-    h3({ children, ...props }: { children?: React.ReactNode }) {
-      return <h3 className="text-xs font-bold mt-2 mb-1 dark:text-white" {...props}>{children}</h3>;
-    },
-    ul({ children, ...props }: { children?: React.ReactNode }) {
-      return <ul className="list-disc pl-4 mb-2 text-xs dark:text-white" {...props}>{children}</ul>;
-    },
-    ol({ children, ...props }: { children?: React.ReactNode }) {
-      return <ol className="list-decimal pl-4 mb-2 text-xs dark:text-white" {...props}>{children}</ol>;
-    },
-    li({ children, ...props }: { children?: React.ReactNode }) {
-      return <li className="mb-1 text-xs dark:text-white" {...props}>{children}</li>;
-    },
 
-    code(props: {
-      inline?: boolean;
-      className?: string;
-      children?: React.ReactNode;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      [key: string]: any; // Using any here as it's required for ReactMarkdown components
-    }) {
-      const { inline, className, children, ...otherProps } = props;
-      const match = /language-(\w+)/.exec(className || '');
-      const codeContent = children ? String(children).replace(/\n$/, '') : '';
-
-      // Handle Mermaid diagrams
-      if (!inline && match && match[1] === 'mermaid') {
-        return (
-          <div className="my-6 bg-gray-50 dark:bg-gray-800 rounded-md overflow-hidden">
-            <Mermaid
-              chart={codeContent}
-              className="w-full max-w-full"
-              onMermaidError={handleMermaidError}
-              zoomingEnabled={true}
-            />
-          </div>
-        );
-      }
-
-      // Handle math blocks
-      if (!inline && match && match[1] === 'math') {
-        return (
-          <div className="my-4 p-4 bg-gray-50 dark:bg-gray-800 overflow-x-auto rounded-md">
-            {children}
-          </div>
-        );
-      }
-
-      // Handle regular code blocks with syntax highlighting
-      if (!inline && match) {
-        return (
-          <div className="my-4 rounded-md overflow-hidden">
-            <div className="flex items-center justify-between bg-gray-200 dark:bg-gray-700 px-4 py-1 text-xs text-gray-700 dark:text-gray-300">
-              <span>{match[1]}</span>
-              <button
-                onClick={() => navigator.clipboard.writeText(codeContent)}
-                className="hover:bg-gray-300 dark:hover:bg-gray-600 p-1 rounded"
-                aria-label="Copy code"
-                title="Copy code"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
-                  <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
-                </svg>
-              </button>
-            </div>
-            <SyntaxHighlighter
-              language={match[1]}
-              style={tomorrow}
-              className="!text-xs"
-              customStyle={{ margin: 0, borderRadius: '0 0 0.375rem 0.375rem' }}
-              showLineNumbers={true}
-              wrapLines={true}
-              wrapLongLines={true}
-              {...otherProps}
-            >
-              {codeContent}
-            </SyntaxHighlighter>
-          </div>
-        );
-      }
-
-      // Handle inline code
-      return (
-        <code
-          className={`${className} font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-pink-500 dark:text-pink-400 text-xs`}
-          {...otherProps}
-        >
-          {children}
-        </code>
-      );
-    },
-  }), [handleMermaidError]);
 
   return (
     <div className="h-screen bg-gray-100 dark:bg-gray-900 p-4 md:p-8 flex flex-col">
@@ -1316,13 +1211,10 @@ IMPORTANT:
                   )}
 
                   <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                      components={MarkdownComponents}
-                    >
-                      {generatedPages[currentPageId].content}
-                    </ReactMarkdown>
+                    <Markdown
+                      content={generatedPages[currentPageId].content}
+                      onMermaidError={handleMermaidError}
+                    />
                   </div>
 
                   {generatedPages[currentPageId].relatedPages.length > 0 && (
@@ -1344,6 +1236,8 @@ IMPORTANT:
                       </div>
                     </div>
                   )}
+
+
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center p-8 text-gray-400 h-full">
@@ -1385,13 +1279,35 @@ IMPORTANT:
                 <Mermaid chart={DEMO_SEQUENCE_CHART} />
               </div>
             </div>
+
+
           </div>
         )}
       </main>
 
-      <footer className="max-w-6xl mx-auto mt-8 flex justify-between items-center gap-4 text-center text-gray-500 dark:text-gray-400 text-sm h-fit w-full">
-        <p className="flex-1">DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
-        <ThemeToggle />
+      <footer className="max-w-6xl mx-auto mt-8 flex flex-col gap-4 w-full">
+        {/* Only show Ask component when wiki is successfully generated */}
+        {wikiStructure && Object.keys(generatedPages).length > 0 && !isLoading && (
+          <div className="w-full bg-gray-800 dark:bg-gray-800/80 rounded-lg p-4 mb-4 text-white">
+            <div className="text-center mb-2 text-sm">
+              Ask questions about this repository
+            </div>
+            <Ask
+              repoUrl={repoInfo.owner && repoInfo.repo
+                ? (repoInfo.type === 'github'
+                  ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
+                  : `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`)
+                : "https://github.com/AsyncFuncAI/deepwiki-open"
+              }
+              githubToken={githubToken}
+              gitlabToken={gitlabToken}
+            />
+          </div>
+        )}
+        <div className="flex justify-between items-center gap-4 text-center text-gray-500 dark:text-gray-400 text-sm h-fit w-full">
+          <p className="flex-1">DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
+          <ThemeToggle />
+        </div>
       </footer>
     </div>
   );
