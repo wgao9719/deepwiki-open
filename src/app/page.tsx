@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaDownload, FaFileExport } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -93,6 +93,15 @@ export default function Home() {
 
   // Memoize repo info to avoid triggering updates in callbacks
   const currentRepoInfo = useMemo(() => repoInfo, [repoInfo]);
+
+  // Add useEffect to handle scroll reset
+  useEffect(() => {
+    // Scroll to top when currentPageId changes
+    const wikiContent = document.getElementById('wiki-content');
+    if (wikiContent) {
+      wikiContent.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [currentPageId]);
 
   // Function to handle Mermaid rendering errors and attempt auto-fix
   const handleMermaidError = useCallback(async (errorMessage: string, originalChart: string) => {
@@ -1056,10 +1065,10 @@ IMPORTANT:
   }), [handleMermaidError]);
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-4 md:p-8">
+    <div className="h-screen bg-gray-100 dark:bg-gray-900 p-4 md:p-8 flex flex-col">
       <style>{wikiStyles}</style>
 
-      <header className="max-w-6xl mx-auto mb-8">
+      <header className="max-w-6xl mx-auto mb-8 h-fit w-full">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center">
             <FaWikipediaW className="mr-2 text-3xl text-purple-500" />
@@ -1144,7 +1153,7 @@ IMPORTANT:
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto">
+      <main className="flex-1 max-w-6xl mx-auto overflow-y-auto">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
@@ -1198,9 +1207,9 @@ IMPORTANT:
             </p>
           </div>
         ) : wikiStructure ? (
-          <div className="flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+          <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             {/* Wiki Navigation */}
-            <div className="w-full lg:w-80 flex-shrink-0 bg-gray-100 dark:bg-gray-800/50 rounded-lg p-4 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700/20 max-h-[600px] overflow-y-auto">
+            <div className="h-full w-full lg:w-80 flex-shrink-0 bg-gray-100 dark:bg-gray-800/50 rounded-lg rounded-r-none p-4 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700/20 overflow-y-auto">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">{wikiStructure.title}</h3>
               <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{wikiStructure.description}</p>
 
@@ -1264,7 +1273,11 @@ IMPORTANT:
                           ? 'bg-purple-700/50 text-white'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-purple-700/30'
                       }`}
-                      onClick={() => setCurrentPageId(page.id)}
+                      onClick={() => {
+                        if (currentPageId != page.id) {
+                          setCurrentPageId(page.id)
+                        }
+                      }}
                     >
                       <div className="flex items-center">
                         <div className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${
@@ -1280,7 +1293,7 @@ IMPORTANT:
             </div>
 
             {/* Wiki Content */}
-            <div className="w-full flex-grow p-4 max-h-[600px] overflow-y-auto">
+            <div id="wiki-content" className="w-full flex-grow p-4 overflow-y-auto">
               {currentPageId && generatedPages[currentPageId] ? (
                 <div>
                   <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2 break-words">
@@ -1339,7 +1352,7 @@ IMPORTANT:
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+          <div className="h-full overflow-y-auto flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <FaWikipediaW className="text-5xl text-purple-500 mb-4" />
             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">Welcome to DeepWiki (Open Source)</h2>
             <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
@@ -1374,7 +1387,7 @@ IMPORTANT:
         )}
       </main>
 
-      <footer className="max-w-6xl mx-auto mt-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+      <footer className="max-w-6xl mx-auto mt-8 text-center text-gray-500 dark:text-gray-400 text-sm h-fit">
         <p>DeepWiki - Generate Wiki from GitHub/Gitlab repositories</p>
       </footer>
     </div>
