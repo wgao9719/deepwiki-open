@@ -12,6 +12,7 @@ import glob
 from adalflow.utils import get_adalflow_default_root_path
 from adalflow.core.db import LocalDB
 from api.config import configs
+from api.ollama_patch import OllamaDocumentProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Maximum token limit for OpenAI embedding models
 MAX_EMBEDDING_TOKENS = 8192
 
-def count_tokens(text: str, model: str = "text-embedding-3-small") -> int:
+def count_tokens(text: str, model: str = "nomic-embed-text") -> int:
     """
     Count the number of tokens in a text string using tiktoken.
 
@@ -225,13 +226,16 @@ def read_all_documents(path: str):
 def prepare_data_pipeline():
     """Creates and returns the data transformation pipeline."""
     splitter = TextSplitter(**configs["text_splitter"])
+    # TODO: Choose bween Ollama and OpenAI embedder
     embedder = adal.Embedder(
-        model_client=configs["embedder"]["model_client"](),
-        model_kwargs=configs["embedder"]["model_kwargs"],
+        model_client=configs["embedder_ollama"]["model_client"](),
+        model_kwargs=configs["generator_ollama"]["model_kwargs"],
     )
-    embedder_transformer = ToEmbeddings(
-        embedder=embedder, batch_size=configs["embedder"]["batch_size"]
-    )
+    # embedder_transformer = ToEmbeddings(
+    #     embedder=embedder, batch_size=configs["embedder"]["batch_size"]
+    # )
+    embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
+    
     data_transformer = adal.Sequential(
         splitter, embedder_transformer
     )  # sequential will chain together splitter and embedder

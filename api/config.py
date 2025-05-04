@@ -1,4 +1,4 @@
-from adalflow import GoogleGenAIClient
+from adalflow import GoogleGenAIClient, OllamaClient
 from adalflow.components.model_client.openai_client import OpenAIClient
 import os
 
@@ -20,6 +20,20 @@ configs = {
         "model_client": GoogleGenAIClient,
         "model_kwargs": {
             "model": "gemini-2.5-flash-preview-04-17",
+            "temperature": 0.7,
+            "top_p": 0.8,
+        },
+    },
+    "embedder_ollama": {
+        "model_client": OllamaClient,
+        "model_kwargs": {
+            "model": "nomic-embed-text"
+        },
+    },
+    "generator_ollama": {
+        "model_client": OllamaClient,
+        "model_kwargs": {
+            "model": "qwen3:8b",
             "temperature": 0.7,
             "top_p": 0.8,
         },
