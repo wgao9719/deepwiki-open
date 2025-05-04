@@ -34,8 +34,10 @@ configs = {
         "model_client": OllamaClient,
         "model_kwargs": {
             "model": "qwen3:8b",
-            "temperature": 0.7,
-            "top_p": 0.8,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.8,
+            }
         },
     },
     "text_splitter": {

@@ -382,8 +382,8 @@ This file contains...
                 "model": configs["generator_ollama"]["model_kwargs"]["model"],
                 "stream": True,
                 "options": {
-                    "temperature": configs["generator_ollama"]["model_kwargs"]["temperature"],
-                    "top_p": configs["generator_ollama"]["model_kwargs"]["top_p"]
+                    "temperature": configs["generator_ollama"]["model_kwargs"]["options"]["temperature"],
+                    "top_p": configs["generator_ollama"]["model_kwargs"]["options"]["top_p"]
                 }
             }
             api_kwargs = model.convert_inputs_to_api_kwargs(
