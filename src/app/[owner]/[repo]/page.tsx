@@ -67,12 +67,15 @@ export default function RepoWikiPage() {
   const [pagesInProgress, setPagesInProgress] = useState(new Set<string>());
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
   const [requestInProgress, setRequestInProgress] = useState(false);
   const activeContentRequests = useMemo(() => new Map<string, boolean>(), []);
   const [structureRequestInProgress, setStructureRequestInProgress] = useState(false);
 
   // Create a flag to ensure the effect only runs once
   const effectRan = React.useRef(false);
+
+  // Memoize repo info to avoid triggering updates in callbacks
 
   // Add useEffect to handle scroll reset
   useEffect(() => {
@@ -82,8 +85,6 @@ export default function RepoWikiPage() {
       wikiContent.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [currentPageId]);
-
-
 
   // Generate content for a wiki page
   const generatePageContent = useCallback(async (page: WikiPage, owner: string, repo: string) => {
@@ -121,6 +122,7 @@ export default function RepoWikiPage() {
           ...prev,
           [page.id]: { ...page, content: 'Loading...' } // Placeholder
         }));
+        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' })); // Clear previous original
 
         // Make API call to generate page content
         console.log(`Starting content generation for page: ${page.title}`);
@@ -132,51 +134,33 @@ export default function RepoWikiPage() {
 
         // Create the prompt content - simplified to avoid message dialogs
         const promptContent =
-`
-Generate comprehensive wiki page content for "${page.title}" in the repository ${owner}/${repo}.
+`Generate comprehensive wiki page content for "${page.title}" in the repository ${owner}/${repo}.
 
-This page MUST focus exclusively on the following files:
+This page should focus on the following files:
 ${filePaths.map(path => `- ${path}`).join('\n')}
 
-## STRICT REQUIREMENTS:
+Include:
+- Clear introduction explaining what "${page.title}" is
+- Explanation of purpose and functionality
+- Code snippets when helpful (less than 20 lines)
+- At least one Mermaid diagram [Flow or Sequence] (use "graph TD" for vertical orientation)
+- Proper markdown formatting with code blocks and headings
+- Source links to relevant files: Eample: <p>Sources: <a href="https://github.com/AsyncFuncAI/deepwiki-open/blob/main/api/rag.py" target="_blank" rel="noopener noreferrer" class="mb-1 mr-1 inline-flex items-stretch font-mono text-xs !no-underline">SOURCE_DISPLAY</a></p>5. Explicitly explain how this component/feature integrates with the overall architecture
 
-### Content Structure:
-1. Begin with a clear, concise introduction (2-3 sentences) explaining what "${page.title}" is
-2. Provide detailed explanation of purpose and functionality
-3. Include properly formatted small code snippets only when applicable to explain concepts, ideally less than 20 lines
-4. RElated SOURCES:
-   - Include Github/Gitlab source links in format:
-     Eample: <p>Sources: <a href="https://github.com/AsyncFuncAI/deepwiki-open/blob/main/api/rag.py" target="_blank" rel="noopener noreferrer" class="mb-1 mr-1 inline-flex items-stretch font-mono text-xs !no-underline">SOURCE_DISPLAY</a></p>5. Explicitly explain how this component/feature integrates with the overall architecture
-6. Include complete setup and usage instructions when applicable
-7. Maintain consistent heading hierarchy (H1 > H2 > H3)
-### Markdown Formatting:
-1. CRITICAL: All code blocks MUST:
-   - Start immediately after a newline with triple backticks and language identifier
-   - Have NO spaces before the opening backticks
-   - End with triple backticks on a new line with NO spaces
-   - Be followed by a blank line
-   - Example:
-     \`\`\`typescript
-     // Code here
-     \`\`\`
 
-2. Use proper heading hierarchy (# for title, ## for sections, ### for subsections)
-3. Use bullet points for lists (not dashes)
-4. Highlight important concepts with **bold text**
-5. Use inline code formatting with backticks for variable names, methods, etc.
+Use proper markdown formatting for code blocks and include a vertical Mermaid diagram.
 
 ### Mermaid Diagrams:
-1. MANDATORY: Include AT LEAST ONE relevant Mermaid diagram
+1. MANDATORY: Include AT LEAST ONE relevant Mermaid diagram, most people prefer sequence diagrams if applicable.
 2. CRITICAL: All diagrams MUST follow strict vertical orientation:
    - Use "graph TD" (top-down) directive for flow diagrams
    - NEVER use "graph LR" (left-right)
    - Maximum node width should be 3-4 words
-   - Break longer node labels into multiple lines using <br>
    - Example:
      \`\`\`mermaid
      graph TD
-       A[Start<br>Process] --> B[Middle<br>Step]
-       B --> C[End<br>Result]
+       A[Start Process] --> B[Middle Step]
+       B --> C[End Result]
      \`\`\`
 
 3. Flow Diagram Requirements:
@@ -200,16 +184,7 @@ ${filePaths.map(path => `- ${path}`).join('\n')}
      - -x for failed messages
    - Include activation boxes using +/- notation
    - Add notes for clarification using "Note over" or "Note right of"
-
-### Validation Checklist:
-Before submitting, ensure:
-1. NO horizontal node arrangements in diagrams
-2. ALL code blocks start with triple backticks and language identifier with NO preceding spaces
-3. ALL code blocks end with triple backticks on a new line with NO spaces
-4. At least one Mermaid diagram is included
-5. Page addresses ALL listed files
-6. NO placeholder or generic content
-7. ALL instructions in this prompt have been followed precisely`;
+`;
 
         // Prepare request body
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -273,6 +248,8 @@ Before submitting, ensure:
         // Store the FINAL generated content
         const updatedPage = { ...page, content };
         setGeneratedPages(prev => ({ ...prev, [page.id]: updatedPage }));
+        // Store this as the original for potential mermaid retries
+        setOriginalMarkdown(prev => ({ ...prev, [page.id]: content }));
 
         resolve();
       } catch (err) {
@@ -329,7 +306,7 @@ Before submitting, ensure:
         repo_url: repoUrl,
         messages: [{
           role: 'user',
-          content: `Analyze this repository ${owner}/${repo} and create a wiki structure for it.
+          content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
 
 1. The complete file tree of the project:
 <file_tree>
@@ -341,7 +318,17 @@ ${fileTree}
 ${readme}
 </readme>
 
-Create a wiki structure in XML format:
+I want to create a wiki for this repository. Determine the most logical structure for a wiki based on the repository's content.
+
+When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
+- Architecture overviews
+- Data flow descriptions
+- Component relationships
+- Process workflows
+- State machines
+- Class hierarchies
+
+Return your analysis in the following XML format:
 
 <wiki_structure>
   <title>[Overall title for the wiki]</title>
@@ -349,19 +336,33 @@ Create a wiki structure in XML format:
   <pages>
     <page id="page-1">
       <title>[Page title]</title>
-      <description>[Brief description]</description>
+      <description>[Brief description of what this page will cover]</description>
       <importance>high|medium|low</importance>
       <relevant_files>
         <file_path>[Path to a relevant file]</file_path>
+        <!-- More file paths as needed -->
       </relevant_files>
       <related_pages>
         <related>page-2</related>
+        <!-- More related page IDs as needed -->
       </related_pages>
     </page>
+    <!-- More pages as needed -->
   </pages>
 </wiki_structure>
 
-Create 4-6 pages that cover the main aspects of this repository. Return only valid XML.`
+IMPORTANT FORMATTING INSTRUCTIONS:
+- Return ONLY the valid XML structure specified above
+- DO NOT wrap the XML in markdown code blocks (no \`\`\` or \`\`\`xml)
+- DO NOT include any explanation text before or after the XML
+- Ensure the XML is properly formatted and valid
+- Start directly with <wiki_structure> and end with </wiki_structure>
+
+IMPORTANT:
+1. Create 4-6 pages that would make a comprehensive wiki for this repository
+2. Each page should focus on a specific aspect of the codebase (e.g., architecture, key features, setup)
+3. The relevant_files should be actual files from the repository that would be used to generate that page
+4. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters`
         }]
       };
 
@@ -859,7 +860,6 @@ Create 4-6 pages that cover the main aspects of this repository. Return only val
     return () => {
       console.log('Repository page unmounting');
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);  // Empty dependency array to ensure it only runs once on mount
 
   return (
