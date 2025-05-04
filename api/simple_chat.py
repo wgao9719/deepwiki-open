@@ -368,9 +368,6 @@ This file contains...
 
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
-        # Log the prompt for debugging
-        logger.info(f"Generated prompt (first 500 chars): {prompt[:500]}...")
-
         # Initialize Google Generative AI model
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
