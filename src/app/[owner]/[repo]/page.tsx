@@ -40,11 +40,11 @@ export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
   const searchParams = useSearchParams();
-  
+
   // Extract owner and repo from route params
   const owner = params.owner as string;
   const repo = params.repo as string;
-  
+
   // Extract tokens from search params
   const githubToken = searchParams.get('github_token') || '';
   const gitlabToken = searchParams.get('gitlab_token') || '';
@@ -67,10 +67,12 @@ export default function RepoWikiPage() {
   const [pagesInProgress, setPagesInProgress] = useState(new Set<string>());
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
+  const [requestInProgress, setRequestInProgress] = useState(false);
+  const activeContentRequests = useMemo(() => new Map<string, boolean>(), []);
+  const [structureRequestInProgress, setStructureRequestInProgress] = useState(false);
 
-  // Memoize repo info to avoid triggering updates in callbacks
-  const currentRepoInfo = useMemo(() => repoInfo, [repoInfo]);
+  // Create a flag to ensure the effect only runs once
+  const effectRan = React.useRef(false);
 
   // Add useEffect to handle scroll reset
   useEffect(() => {
@@ -81,99 +83,7 @@ export default function RepoWikiPage() {
     }
   }, [currentPageId]);
 
-  // Function to handle Mermaid rendering errors and attempt auto-fix
-  const handleMermaidError = useCallback(async (errorMessage: string, originalChart: string) => {
-    if (!currentPageId || !originalMarkdown[currentPageId]) {
-      console.error('Cannot retry Mermaid: Missing current page ID or original markdown.');
-      return;
-    }
 
-    // Need owner and repo for the API call
-    const { owner, repo } = currentRepoInfo;
-    if (!owner || !repo) {
-      console.error('Cannot retry Mermaid: Missing repository info.');
-      return;
-    }
-
-    console.log(`Handling Mermaid error for page ${currentPageId}. Error: ${errorMessage}`);
-
-    const retryPrompt = `The following Mermaid diagram code failed to render with the error: "${errorMessage}"
-
-Original Mermaid Code:
-\`\`\`mermaid
-${originalChart}
-\`\`\`
-
-Please regenerate the diagram from scratch and return ONLY the corrected Mermaid code block itself, starting with \`\`\`mermaid and ending with \`\`\`. Do not include any other text, explanation, or markdown formatting outside the code block. Fix the error: "${errorMessage}".
-
-If this is a flow diagram, avoid horizontal layouts if possible and prefer "graph TD" orientation.
-If this is a sequence diagram, ensure proper syntax with "sequenceDiagram" directive and correct arrow notation (e.g., A->>B: Message).`;
-
-    try {
-      setLoadingMessage('Attempting to auto-correct diagram error...');
-      const response = await fetch('http://localhost:8001/chat/completions/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repo_url: `https://${repoInfo.type === 'github' ? 'github' : 'gitlab'}.com/${owner}/${repo}`,
-          messages: [{ role: 'user', content: retryPrompt }]
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error during retry: ${response.status}`);
-      }
-
-      let correctedMermaidBlock = '';
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) throw new Error('Failed to get reader for retry response');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        correctedMermaidBlock += decoder.decode(value, { stream: true });
-      }
-      correctedMermaidBlock += decoder.decode(); // Final decode
-
-      // Basic cleaning: Trim whitespace and ensure it looks like a mermaid block
-      correctedMermaidBlock = correctedMermaidBlock.trim();
-      if (correctedMermaidBlock.startsWith('```mermaid') && correctedMermaidBlock.endsWith('```')) {
-        console.log('Received corrected Mermaid block from API.');
-
-        // Find the original broken chart in the full markdown and replace it
-        // This simple replacement assumes the broken chart string is unique enough
-        const originalContent = originalMarkdown[currentPageId];
-        const originalChartBlock = `\`\`\`mermaid\n${originalChart}\n\`\`\``; // Reconstruct original block
-
-        if (originalContent.includes(originalChartBlock)) {
-          const updatedContent = originalContent.replace(originalChartBlock, correctedMermaidBlock);
-
-          // Update the generated page content
-          setGeneratedPages(prev => ({
-            ...prev,
-            [currentPageId]: {
-              ...prev[currentPageId],
-              content: updatedContent,
-            }
-          }));
-          // Update original markdown store as well in case of further errors
-          setOriginalMarkdown(prev => ({ ...prev, [currentPageId]: updatedContent }));
-          console.log(`Page ${currentPageId} updated with corrected Mermaid diagram.`);
-        } else {
-          console.warn('Could not find the original Mermaid block in the content for replacement.');
-        }
-      } else {
-        console.error('Received malformed corrected Mermaid block from API:', correctedMermaidBlock);
-      }
-
-    } catch (error) {
-      console.error('Error during Mermaid retry API call:', error);
-    } finally {
-      setLoadingMessage(undefined); // Clear loading message
-    }
-  }, [currentPageId, originalMarkdown, currentRepoInfo]);
 
   // Generate content for a wiki page
   const generatePageContent = useCallback(async (page: WikiPage, owner: string, repo: string) => {
@@ -185,6 +95,16 @@ If this is a sequence diagram, ensure proper syntax with "sequenceDiagram" direc
           return;
         }
 
+        // Skip if this page is already being processed
+        if (activeContentRequests.get(page.id)) {
+          console.log(`Page ${page.id} (${page.title}) is already being processed, skipping duplicate call`);
+          resolve();
+          return;
+        }
+
+        // Mark this page as being processed
+        activeContentRequests.set(page.id, true);
+
         // Validate repo info
         if (!owner || !repo) {
           throw new Error('Invalid repository information. Owner and repo name are required.');
@@ -192,7 +112,7 @@ If this is a sequence diagram, ensure proper syntax with "sequenceDiagram" direc
 
         // Mark page as in progress
         setPagesInProgress(prev => new Set(prev).add(page.id));
-        setLoadingMessage(`Generating content for page: ${page.title}...`);
+        // Don't set loading message for individual pages during queue processing
 
         const filePaths = page.filePaths;
 
@@ -201,7 +121,6 @@ If this is a sequence diagram, ensure proper syntax with "sequenceDiagram" direc
           ...prev,
           [page.id]: { ...page, content: 'Loading...' } // Placeholder
         }));
-        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' })); // Clear previous original
 
         // Make API call to generate page content
         console.log(`Starting content generation for page: ${page.title}`);
@@ -211,8 +130,8 @@ If this is a sequence diagram, ensure proper syntax with "sequenceDiagram" direc
           ? `https://github.com/${owner}/${repo}`
           : `https://gitlab.com/${owner}/${repo}`;
 
-        // Create the prompt content
-        const promptContent = 
+        // Create the prompt content - simplified to avoid message dialogs
+        const promptContent =
 `
 Generate comprehensive wiki page content for "${page.title}" in the repository ${owner}/${repo}.
 
@@ -224,8 +143,8 @@ ${filePaths.map(path => `- ${path}`).join('\n')}
 ### Content Structure:
 1. Begin with a clear, concise introduction (2-3 sentences) explaining what "${page.title}" is
 2. Provide detailed explanation of purpose and functionality
-3. Include properly formatted small code snippets only when applicable to explain concepts, less than 20 lines
-4. SOURCES:
+3. Include properly formatted small code snippets only when applicable to explain concepts, ideally less than 20 lines
+4. RElated SOURCES:
    - Include Github/Gitlab source links in format:
      Eample: <p>Sources: <a href="https://github.com/AsyncFuncAI/deepwiki-open/blob/main/api/rag.py" target="_blank" rel="noopener noreferrer" class="mb-1 mr-1 inline-flex items-stretch font-mono text-xs !no-underline">SOURCE_DISPLAY</a></p>5. Explicitly explain how this component/feature integrates with the overall architecture
 6. Include complete setup and usage instructions when applicable
@@ -240,7 +159,7 @@ ${filePaths.map(path => `- ${path}`).join('\n')}
      \`\`\`typescript
      // Code here
      \`\`\`
-     
+
 2. Use proper heading hierarchy (# for title, ## for sections, ### for subsections)
 3. Use bullet points for lists (not dashes)
 4. Highlight important concepts with **bold text**
@@ -354,8 +273,6 @@ Before submitting, ensure:
         // Store the FINAL generated content
         const updatedPage = { ...page, content };
         setGeneratedPages(prev => ({ ...prev, [page.id]: updatedPage }));
-        // Store this as the original for potential mermaid retries
-        setOriginalMarkdown(prev => ({ ...prev, [page.id]: content }));
 
         resolve();
       } catch (err) {
@@ -369,6 +286,9 @@ Before submitting, ensure:
         setError(`Failed to generate content for ${page.title}.`);
         resolve(); // Resolve even on error to unblock queue
       } finally {
+        // Clear the processing flag for this page
+        activeContentRequests.delete(page.id);
+
         // Mark page as done
         setPagesInProgress(prev => {
           const next = new Set(prev);
@@ -378,7 +298,7 @@ Before submitting, ensure:
         setLoadingMessage(undefined); // Clear specific loading message
       }
     });
-  }, [generatedPages, githubToken, gitlabToken, repoInfo.type]);
+  }, [generatedPages, githubToken, gitlabToken, repoInfo.type, activeContentRequests]);
 
   // Determine the wiki structure from repository data
   const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
@@ -388,7 +308,14 @@ Before submitting, ensure:
       return;
     }
 
+    // Skip if structure request is already in progress
+    if (structureRequestInProgress) {
+      console.log('Wiki structure determination already in progress, skipping duplicate call');
+      return;
+    }
+
     try {
+      setStructureRequestInProgress(true);
       setLoadingMessage('Determining wiki structure...');
 
       // Determine which token to use based on the repository type
@@ -402,7 +329,7 @@ Before submitting, ensure:
         repo_url: repoUrl,
         messages: [{
           role: 'user',
-          content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
+          content: `Analyze this repository ${owner}/${repo} and create a wiki structure for it.
 
 1. The complete file tree of the project:
 <file_tree>
@@ -414,17 +341,7 @@ ${fileTree}
 ${readme}
 </readme>
 
-I want to create a wiki for this repository. Determine the most logical structure for a wiki based on the repository's content.
-
-When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
-- Architecture overviews
-- Data flow descriptions
-- Component relationships
-- Process workflows
-- State machines
-- Class hierarchies
-
-Return your analysis in the following XML format:
+Create a wiki structure in XML format:
 
 <wiki_structure>
   <title>[Overall title for the wiki]</title>
@@ -432,33 +349,19 @@ Return your analysis in the following XML format:
   <pages>
     <page id="page-1">
       <title>[Page title]</title>
-      <description>[Brief description of what this page will cover]</description>
+      <description>[Brief description]</description>
       <importance>high|medium|low</importance>
       <relevant_files>
         <file_path>[Path to a relevant file]</file_path>
-        <!-- More file paths as needed -->
       </relevant_files>
       <related_pages>
         <related>page-2</related>
-        <!-- More related page IDs as needed -->
       </related_pages>
     </page>
-    <!-- More pages as needed -->
   </pages>
 </wiki_structure>
 
-IMPORTANT FORMATTING INSTRUCTIONS:
-- Return ONLY the valid XML structure specified above
-- DO NOT wrap the XML in markdown code blocks (no \`\`\` or \`\`\`xml)
-- DO NOT include any explanation text before or after the XML
-- Ensure the XML is properly formatted and valid
-- Start directly with <wiki_structure> and end with </wiki_structure>
-
-IMPORTANT:
-1. Create 4-6 pages that would make a comprehensive wiki for this repository
-2. Each page should focus on a specific aspect of the codebase (e.g., architecture, key features, setup)
-3. The relevant_files should be actual files from the repository that would be used to generate that page
-4. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters`
+Create 4-6 pages that cover the main aspects of this repository. Return only valid XML.`
         }]
       };
 
@@ -605,10 +508,12 @@ IMPORTANT:
                     console.log("All page generation tasks completed.");
                     setIsLoading(false);
                     setLoadingMessage(undefined);
+                  } else {
+                    // Only process more if there are items remaining and we're under capacity
+                    if (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
+                      processQueue();
+                    }
                   }
-
-                  // Try to process the next item immediately
-                  setTimeout(processQueue, 100);
                 });
             }
           }
@@ -640,11 +545,19 @@ IMPORTANT:
       setIsLoading(false);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
       setLoadingMessage(undefined);
+    } finally {
+      setStructureRequestInProgress(false);
     }
-  }, [generatePageContent, githubToken, gitlabToken, repoInfo.type, pagesInProgress.size]);
+  }, [generatePageContent, githubToken, gitlabToken, repoInfo.type, pagesInProgress.size, structureRequestInProgress]);
 
   // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
+    // If a request is already in progress, don't start another one
+    if (requestInProgress) {
+      console.log('Repository fetch already in progress, skipping duplicate call');
+      return;
+    }
+
     // Reset previous state
     setWikiStructure(undefined);
     setCurrentPageId(undefined);
@@ -653,6 +566,9 @@ IMPORTANT:
     setError(null);
 
     try {
+      // Set the request in progress flag
+      setRequestInProgress(true);
+
       // Update loading state
       setIsLoading(true);
       setLoadingMessage('Fetching repository structure...');
@@ -843,8 +759,11 @@ IMPORTANT:
       setIsLoading(false);
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
       setLoadingMessage(undefined);
+    } finally {
+      // Reset the request in progress flag
+      setRequestInProgress(false);
     }
-  }, [owner, repo, determineWikiStructure, githubToken, gitlabToken, repoInfo.type]);
+  }, [owner, repo, determineWikiStructure, githubToken, gitlabToken, repoInfo.type, requestInProgress]);
 
   // Function to export wiki content
   const exportWiki = useCallback(async (format: 'markdown' | 'json') => {
@@ -926,7 +845,21 @@ IMPORTANT:
 
   // Start wiki generation when component mounts
   useEffect(() => {
-    fetchRepositoryStructure();
+    console.log('Initial repository fetch triggered');
+
+    if (effectRan.current === false) {
+      console.log('Fetching repository structure - first execution');
+      fetchRepositoryStructure();
+      effectRan.current = true;
+    } else {
+      console.log('Skipping duplicate repository fetch');
+    }
+
+    // Clean up function
+    return () => {
+      console.log('Repository page unmounting');
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);  // Empty dependency array to ensure it only runs once on mount
 
   return (
@@ -1000,7 +933,7 @@ IMPORTANT:
               Please check that your repository exists and is public. Valid formats are &ldquo;owner/repo&rdquo;, &ldquo;https://github.com/owner/repo&rdquo;, or &ldquo;https://gitlab.com/owner/repo&rdquo;.
             </p>
             <div className="mt-4">
-              <Link 
+              <Link
                 href="/"
                 className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 inline-block"
               >
@@ -1116,7 +1049,6 @@ IMPORTANT:
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <Markdown
                       content={generatedPages[currentPageId].content}
-                      onMermaidError={handleMermaidError}
                     />
                   </div>
 
@@ -1177,4 +1109,4 @@ IMPORTANT:
       </footer>
     </div>
   );
-} 
+}

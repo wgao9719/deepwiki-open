@@ -372,7 +372,7 @@ This file contains...
         model = genai.GenerativeModel(
             model_name="gemini-2.0-flash",
             generation_config={
-                "temperature": 0.3,
+                "temperature": 0.7,
                 "top_p": 0.8,
                 "top_k": 40
             }

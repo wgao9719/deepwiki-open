@@ -42,6 +42,7 @@ export default function Home() {
   const [githubToken, setGithubToken] = useState('');
   const [gitlabToken, setGitlabToken] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Parse repository URL/input and extract owner and repo
   const parseRepositoryInput = (input: string): { owner: string, repo: string, type: string, fullPath?: string } | null => {
@@ -97,11 +98,20 @@ export default function Home() {
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Prevent multiple submissions
+    if (isSubmitting) {
+      console.log('Form submission already in progress, ignoring duplicate click');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
     // Parse repository input
     const parsedRepo = parseRepositoryInput(repositoryInput);
     
     if (!parsedRepo) {
       setError('Invalid repository format. Use "owner/repo", "https://github.com/owner/repo", or "https://gitlab.com/owner/repo" format.');
+      setIsSubmitting(false);
       return;
     }
     
@@ -123,6 +133,8 @@ export default function Home() {
     
     // Navigate to the dynamic route
     router.push(`/${owner}/${repo}${queryString}`);
+    
+    // The isSubmitting state will be reset when the component unmounts during navigation
   };
 
   return (
@@ -155,9 +167,10 @@ export default function Home() {
               </div>
               <button
                 type="submit"
-                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmitting}
               >
-                Generate Wiki
+                {isSubmitting ? 'Processing...' : 'Generate Wiki'}
               </button>
             </div>
 
