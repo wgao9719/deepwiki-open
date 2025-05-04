@@ -26,7 +26,7 @@
 
 ## 🚀 Quick Start (Super Easy!)
 
-### Option 1: Using Docker 
+### Option 1: Using Docker
 
 ```bash
 # Clone the repository
@@ -296,3 +296,7 @@ Contributions are welcome! Feel free to:
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=AsyncFuncAI/deepwiki-open&type=Date)](https://star-history.com/#AsyncFuncAI/deepwiki-open&Date)
