@@ -37,6 +37,53 @@ const wikiStyles = `
   }
 `;
 
+// Helper functions for token handling and API requests
+const getRepoUrl = (owner: string, repo: string, repoType: string): string => {
+  return repoType === 'github'
+    ? `https://github.com/${owner}/${repo}`
+    : `https://gitlab.com/${owner}/${repo}`;
+};
+
+ 
+const addTokensToRequestBody = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  requestBody: Record<string, any>,
+  githubToken: string,
+  gitlabToken: string,
+  repoType: string
+): void => {
+  if (githubToken && repoType === 'github') {
+    requestBody.github_token = githubToken;
+  }
+  if (gitlabToken && repoType === 'gitlab') {
+    requestBody.gitlab_token = gitlabToken;
+  }
+};
+
+const createGithubHeaders = (githubToken: string): HeadersInit => {
+  const headers: HeadersInit = {
+    'Accept': 'application/vnd.github.v3+json'
+  };
+
+  if (githubToken) {
+    headers['Authorization'] = `Bearer ${githubToken}`;
+  }
+
+  return headers;
+};
+
+const createGitlabHeaders = (gitlabToken: string): HeadersInit => {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  if (gitlabToken) {
+    headers['PRIVATE-TOKEN'] = gitlabToken;
+  }
+
+  return headers;
+};
+
 export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
@@ -134,10 +181,8 @@ export default function RepoWikiPage() {
         // Make API call to generate page content
         console.log(`Starting content generation for page: ${page.title}`);
 
-        // Determine which token to use based on the repository type
-        const repoUrl = repoInfo.type === 'github'
-          ? `https://github.com/${owner}/${repo}`
-          : `https://gitlab.com/${owner}/${repo}`;
+        // Get repository URL
+        const repoUrl = getRepoUrl(owner, repo, repoInfo.type);
 
         // Create the prompt content - simplified to avoid message dialogs
         const promptContent =
@@ -204,12 +249,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         };
 
         // Add tokens if available
-        if (githubToken && repoInfo.type === 'github') {
-          requestBody.github_token = githubToken;
-        }
-        if (gitlabToken && repoInfo.type === 'gitlab') {
-          requestBody.gitlab_token = gitlabToken;
-        }
+        addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
         const response = await fetch('http://localhost:8001/chat/completions/stream', {
           method: 'POST',
@@ -305,10 +345,8 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
       setStructureRequestInProgress(true);
       setLoadingMessage('Determining wiki structure...');
 
-      // Determine which token to use based on the repository type
-      const repoUrl = repoInfo.type === 'github'
-        ? `https://github.com/${owner}/${repo}`
-        : `https://gitlab.com/${owner}/${repo}`;
+      // Get repository URL
+      const repoUrl = getRepoUrl(owner, repo, repoInfo.type);
 
       // Prepare request body
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -377,12 +415,7 @@ IMPORTANT:
       };
 
       // Add tokens if available
-      if (githubToken && repoInfo.type === 'github') {
-        requestBody.github_token = githubToken;
-      }
-      if (gitlabToken && repoInfo.type === 'gitlab') {
-        requestBody.gitlab_token = gitlabToken;
-      }
+      addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
       const response = await fetch('http://localhost:8001/chat/completions/stream', {
         method: 'POST',
@@ -595,14 +628,7 @@ IMPORTANT:
 
         for (const branch of ['main', 'master']) {
           const apiUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
-          const headers: HeadersInit = {
-            'Accept': 'application/vnd.github.v3+json'
-          };
-
-          // Add GitHub token if available
-          if (githubToken) {
-            headers['Authorization'] = `Bearer ${githubToken}`;
-          }
+          const headers = createGithubHeaders(githubToken);
 
           console.log(`Fetching repository structure from branch: ${branch}`);
           try {
@@ -640,14 +666,7 @@ IMPORTANT:
 
         // Try to fetch README.md content
         try {
-          const headers: HeadersInit = {
-            'Accept': 'application/vnd.github.v3+json'
-          };
-
-          // Add GitHub token if available
-          if (githubToken) {
-            headers['Authorization'] = `Bearer ${githubToken}`;
-          }
+          const headers = createGithubHeaders(githubToken);
 
           const readmeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
             headers
@@ -672,14 +691,7 @@ IMPORTANT:
         let filesData = null;
         let apiErrorDetails = '';
 
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-        };
-
-        // Add GitLab token if available
-        if (gitlabToken) {
-          headers['PRIVATE-TOKEN'] = gitlabToken;
-        }
+        const headers = createGitlabHeaders(gitlabToken);
 
         // First get project info to determine default branch
         const projectInfoUrl = `https://gitlab.com/api/v4/projects/${encodedProjectPath}`;
@@ -734,12 +746,7 @@ IMPORTANT:
         try {
           for (const branch of ['main', 'master']) {
             const readmeUrl = `https://gitlab.com/api/v4/projects/${encodedProjectPath}/repository/files/README.md/raw?ref=${branch}`;
-            const headers: HeadersInit = {};
-
-            // Add GitLab token if available
-            if (gitlabToken) {
-              headers['PRIVATE-TOKEN'] = gitlabToken;
-            }
+            const headers = createGitlabHeaders(gitlabToken);
 
             try {
               const readmeResponse = await fetch(readmeUrl, {
@@ -798,10 +805,8 @@ IMPORTANT:
         };
       });
 
-      // Determine which token to use based on the repository type
-      const repoUrl = repoInfo.type === 'github'
-        ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
-        : `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`;
+      // Get repository URL
+      const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type);
 
       // Make API call to export wiki
       const response = await fetch('http://localhost:8001/export/wiki', {
@@ -1103,9 +1108,7 @@ IMPORTANT:
             </div>
             <Ask
               repoUrl={repoInfo.owner && repoInfo.repo
-                ? (repoInfo.type === 'github'
-                  ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
-                  : `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`)
+                ? getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type)
                 : "https://github.com/AsyncFuncAI/deepwiki-open"
               }
               githubToken={githubToken}
