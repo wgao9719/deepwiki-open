@@ -299,7 +299,7 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [retryAttempted, setRetryAttempted] = useState(false);
+  const [isRenderingFallback, setIsRenderingFallback] = useState(false);
   const mermaidRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(`mermaid-${Math.random().toString(36).substring(2, 9)}`);
@@ -308,17 +308,6 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
     window.matchMedia &&
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
-
-  // Track if we've already attempted to fix this chart
-  const chartRef = useRef(chart);
-
-  // Reset retry attempt state when chart content changes
-  useEffect(() => {
-    if (chartRef.current !== chart) {
-      setRetryAttempted(false);
-      chartRef.current = chart;
-    }
-  }, [chart]);
 
   // Initialize pan-zoom functionality when SVG is rendered
   useEffect(() => {
@@ -368,6 +357,7 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
       try {
         setError(null);
         setSvg('');
+        setIsRenderingFallback(false);
 
         const processedChart = preprocessMermaidChart(chart);
 
@@ -391,18 +381,12 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
 
         const errorMessage = err instanceof Error ? err.message : String(err);
 
-        // Only attempt to fix once per chart (max 1 attempt)
-        if (isMounted && !retryAttempted && onMermaidError) {
-          console.log('Attempting to auto-fix Mermaid diagram via API (one-time attempt)...');
-          setRetryAttempted(true);
-          onMermaidError(errorMessage, chart);
-          return;
-        }
-
-        if (isMounted) {
+        if (isMounted && !isRenderingFallback) {
           try {
+            // Only try fallback if error is not already from fallback rendering
             const fallbackChart = createEmergencyFallbackChart(chart);
             console.log('Attempting emergency fallback rendering with:', fallbackChart);
+            setIsRenderingFallback(true);
 
             const { svg: fallbackSvg } = await mermaid.render(`${idRef.current}-fallback`, fallbackChart);
 
@@ -429,6 +413,17 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
               }
             }
           }
+        } else {
+          if (isMounted) {
+            setError(`Failed to render diagram: ${errorMessage}`);
+            
+            if (mermaidRef.current) {
+              mermaidRef.current.innerHTML = `
+                <div class="text-red-500 dark:text-red-400 text-xs mb-1">Syntax error in diagram</div>
+                <pre class="text-xs overflow-auto p-2 bg-gray-100 dark:bg-gray-800 rounded">${chart}</pre>
+              `;
+            }
+          }
         }
       }
     };
@@ -438,11 +433,17 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
     return () => {
       isMounted = false;
     };
-  }, [chart, onMermaidError, retryAttempted]);
+  }, [chart, isRenderingFallback]);
 
   const handleDiagramClick = () => {
     if (!error && svg) {
       setIsFullscreen(true);
+    }
+  };
+
+  const handleRepairClick = () => {
+    if (onMermaidError) {
+      onMermaidError("Manual repair requested", chart);
     }
   };
 
@@ -456,25 +457,20 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', onMermaidError
             </svg>
             Diagram rendering error
           </div>
-          {onMermaidError && !retryAttempted && (
+          {onMermaidError && (
             <button
-              onClick={() => {
-                if (onMermaidError) {
-                  setRetryAttempted(true);
-                  onMermaidError("Manual retry requested", chart);
-                }
-              }}
-              className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-1 rounded hover:bg-red-200 dark:hover:bg-red-800/30"
+              onClick={handleRepairClick}
+              className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800/30"
             >
-              Try to fix
+              Repair diagram
             </button>
           )}
         </div>
         <div ref={mermaidRef} className="text-xs overflow-auto"></div>
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {retryAttempted ?
-            "The diagram couldn't be fixed automatically. Please check the syntax." :
-            "The diagram contains syntax errors. You can try to fix it or view the simplified version."}
+          {isRenderingFallback ?
+            "The diagram contains syntax errors. A simplified version is shown." :
+            "The diagram contains syntax errors. Click the repair button to attempt fixing it."}
         </div>
       </div>
     );
