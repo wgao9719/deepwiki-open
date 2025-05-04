@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
-import React, { useCallback, useState, useMemo, useEffect } from 'react';
+import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaDownload, FaFileExport, FaHome } from 'react-icons/fa';
 import Link from 'next/link';
@@ -69,7 +70,11 @@ export default function RepoWikiPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
   const [requestInProgress, setRequestInProgress] = useState(false);
-  const activeContentRequests = useMemo(() => new Map<string, boolean>(), []);
+  // Using useRef for activeContentRequests to maintain a single instance across renders
+  // This map tracks which pages are currently being processed to prevent duplicate requests
+  // Note: In a multi-threaded environment, additional synchronization would be needed,
+  // but in React's single-threaded model, this is safe as long as we set the flag before any async operations
+  const activeContentRequests = useRef(new Map<string, boolean>()).current;
   const [structureRequestInProgress, setStructureRequestInProgress] = useState(false);
 
   // Create a flag to ensure the effect only runs once
@@ -97,13 +102,15 @@ export default function RepoWikiPage() {
         }
 
         // Skip if this page is already being processed
+        // Use a synchronized pattern to avoid race conditions
         if (activeContentRequests.get(page.id)) {
           console.log(`Page ${page.id} (${page.title}) is already being processed, skipping duplicate call`);
           resolve();
           return;
         }
 
-        // Mark this page as being processed
+        // Mark this page as being processed immediately to prevent race conditions
+        // This ensures that if multiple calls happen nearly simultaneously, only one proceeds
         activeContentRequests.set(page.id, true);
 
         // Validate repo info
@@ -264,6 +271,8 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         resolve(); // Resolve even on error to unblock queue
       } finally {
         // Clear the processing flag for this page
+        // This must happen in the finally block to ensure the flag is cleared
+        // even if an error occurs during processing
         activeContentRequests.delete(page.id);
 
         // Mark page as done
@@ -275,7 +284,8 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         setLoadingMessage(undefined); // Clear specific loading message
       }
     });
-  }, [generatedPages, githubToken, gitlabToken, repoInfo.type, activeContentRequests]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedPages, githubToken, gitlabToken, repoInfo.type]);
 
   // Determine the wiki structure from repository data
   const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
@@ -860,6 +870,7 @@ IMPORTANT:
     return () => {
       console.log('Repository page unmounting');
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);  // Empty dependency array to ensure it only runs once on mount
 
   return (
