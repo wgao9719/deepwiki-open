@@ -315,6 +315,7 @@ This file contains...
 - Think step by step and structure your answer logically
 - Start with the most relevant information that directly addresses the user's query
 - Be precise and technical when discussing code
+- Your response language should be in the same language as the user's query 
 </guidelines>
 
 <style>
