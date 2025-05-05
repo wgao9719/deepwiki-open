@@ -59,6 +59,7 @@ class ChatCompletionRequest(BaseModel):
     github_token: Optional[str] = Field(None, description="GitHub personal access token for private repositories")
     gitlab_token: Optional[str] = Field(None, description="GitLab personal access token for private repositories")
     local_ollama: Optional[bool] = Field(False, description="Use locally run Ollama model for embedding and generation")
+    bitbucket_token: Optional[str] = Field(None, description="Bitbucket personal access token for private repositories")
 
 @app.post("/chat/completions/stream")
 async def chat_completions_stream(request: ChatCompletionRequest):
@@ -88,6 +89,9 @@ async def chat_completions_stream(request: ChatCompletionRequest):
             elif "gitlab.com" in request.repo_url and request.gitlab_token:
                 access_token = request.gitlab_token
                 logger.info("Using GitLab token for authentication")
+            elif "bitbucket.org" in request.repo_url and request.bitbucket_token:
+                access_token = request.bitbucket_token
+                logger.info("Using Bitbucket token for authentication")
 
             request_rag.prepare_retriever(request.repo_url, access_token, request.local_ollama)
             logger.info(f"Retriever prepared for {request.repo_url}")
@@ -191,6 +195,8 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         repo_type = "GitHub"
         if "gitlab.com" in repo_url:
             repo_type = "GitLab"
+        elif "bitbucket.org" in repo_url:
+            repo_type = "Bitbucket"
 
         # Create system prompt
         if is_deep_research:
@@ -321,6 +327,7 @@ This file contains...
 - Think step by step and structure your answer logically
 - Start with the most relevant information that directly addresses the user's query
 - Be precise and technical when discussing code
+- Your response language should be in the same language as the user's query 
 </guidelines>
 
 <style>
@@ -340,6 +347,8 @@ This file contains...
                     access_token = request.github_token
                 elif "gitlab.com" in request.repo_url and request.gitlab_token:
                     access_token = request.gitlab_token
+                elif "bitbucket.org" in request.repo_url and request.bitbucket_token:
+                    access_token = request.bitbucket_token
 
                 file_content = get_file_content(request.repo_url, request.filePath, access_token)
                 logger.info(f"Successfully retrieved content for file: {request.filePath}")
