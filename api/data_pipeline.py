@@ -484,7 +484,17 @@ def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str 
 
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode('utf-8')
-        raise ValueError(f"Error fetching file content: {error_msg} (status code: {e.returncode})")
+        if e.returncode == 22:  # curl uses 22 to indicate an HTTP error occurred
+            if "HTTP/1.1 404" in error_msg:
+                raise ValueError("File not found on Bitbucket. Please check the file path and repository.")
+            elif "HTTP/1.1 401" in error_msg:
+                raise ValueError("Unauthorized access to Bitbucket. Please check your access token.")
+            elif "HTTP/1.1 403" in error_msg:
+                raise ValueError("Forbidden access to Bitbucket. You might not have permission to access this file.")
+            elif "HTTP/1.1 500" in error_msg:
+                raise ValueError("Internal server error on Bitbucket. Please try again later.")
+            else:
+                raise ValueError(f"Error fetching file content: {error_msg}")    
     except Exception as e:
         raise ValueError(f"Failed to get file content: {str(e)}")
 
