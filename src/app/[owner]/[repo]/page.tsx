@@ -26,6 +26,8 @@ interface WikiStructure {
   pages: WikiPage[];
 }
 
+const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+
 // Add CSS styles for wiki
 const wikiStyles = `
   .prose code {
@@ -251,7 +253,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         // Add tokens if available
         addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
-        const response = await fetch('http://localhost:8001/chat/completions/stream', {
+        const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -417,7 +419,7 @@ IMPORTANT:
       // Add tokens if available
       addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
-      const response = await fetch('http://localhost:8001/chat/completions/stream', {
+      const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -809,7 +811,7 @@ IMPORTANT:
       const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type);
 
       // Make API call to export wiki
-      const response = await fetch('http://localhost:8001/export/wiki', {
+      const response = await fetch(`${SERVER_BASE_URL}/export/wiki`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -898,7 +900,7 @@ IMPORTANT:
 
       <main className="flex-1 max-w-6xl mx-auto overflow-y-auto">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+          <div className="w-full flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
             <p className="text-gray-800 dark:text-gray-200 text-center mb-2">
               {loadingMessage || 'Loading...'}

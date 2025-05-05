@@ -22,6 +22,8 @@ interface AskProps {
   gitlabToken?: string;
 }
 
+const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+
 const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
@@ -217,7 +219,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
       }
 
       // Make the API call
-      const apiResponse = await fetch('http://localhost:8001/chat/completions/stream', {
+      const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -388,7 +390,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
         requestBody.gitlab_token = gitlabToken;
       }
 
-      const apiResponse = await fetch('http://localhost:8001/chat/completions/stream', {
+      const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
