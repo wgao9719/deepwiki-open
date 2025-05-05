@@ -900,7 +900,7 @@ IMPORTANT:
 
       <main className="flex-1 max-w-6xl mx-auto overflow-y-auto">
         {isLoading ? (
-          <div className="w-full flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+          <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
             <p className="text-gray-800 dark:text-gray-200 text-center mb-2">
               {loadingMessage || 'Loading...'}
