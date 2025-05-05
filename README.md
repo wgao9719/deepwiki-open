@@ -150,11 +150,12 @@ deepwiki/
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
+| Variable | Description | Required | Note |
+|----------|-------------|----------|------|
 | `GOOGLE_API_KEY` | Google Gemini API key for AI generation | Yes |
 | `OPENAI_API_KEY` | OpenAI API key for embeddings | Yes |
-| `PORT` | Port for the API server (default: 8001) | No |
+| `PORT` | Port for the API server (default: 8001) | No | If you host API and frontend on the same machine, make sure change port of `NEXT_PUBLIC_SERVER_BASE_URL` accordingly |
+| `NEXT_PUBLIC_SERVER_BASE_URL` | Base URL for the API server (default: http://localhost:8001) | No |
 
 ### Docker Setup
 

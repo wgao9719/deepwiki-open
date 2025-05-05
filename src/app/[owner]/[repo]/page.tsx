@@ -26,6 +26,8 @@ interface WikiStructure {
   pages: WikiPage[];
 }
 
+const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+
 // Add CSS styles for wiki
 const wikiStyles = `
   .prose code {
@@ -251,7 +253,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         // Add tokens if available
         addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
-        const response = await fetch('http://localhost:8001/chat/completions/stream', {
+        const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -417,7 +419,7 @@ IMPORTANT:
       // Add tokens if available
       addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
 
-      const response = await fetch('http://localhost:8001/chat/completions/stream', {
+      const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -809,7 +811,7 @@ IMPORTANT:
       const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type);
 
       // Make API call to export wiki
-      const response = await fetch('http://localhost:8001/export/wiki', {
+      const response = await fetch(`${SERVER_BASE_URL}/export/wiki`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
