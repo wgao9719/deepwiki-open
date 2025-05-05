@@ -20,11 +20,12 @@ interface AskProps {
   repoUrl: string;
   githubToken?: string;
   gitlabToken?: string;
+  bitbucketToken?: string;
 }
 
 const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
 
-const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
+const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -217,6 +218,9 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
       if (gitlabToken && repoUrl.includes('gitlab.com')) {
         requestBody.gitlab_token = gitlabToken;
       }
+      if (bitbucketToken && repoUrl.includes('bitbucket.org')) {
+        requestBody.bitbucket_token = bitbucketToken;
+      }
 
       // Make the API call
       const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
@@ -388,6 +392,9 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
       }
       if (gitlabToken && repoUrl.includes('gitlab.com')) {
         requestBody.gitlab_token = gitlabToken;
+      }
+      if (bitbucketToken && repoUrl.includes('bitbucket.org')) {
+        requestBody.bitbucket_token = bitbucketToken;
       }
 
       const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
