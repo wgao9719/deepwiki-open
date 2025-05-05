@@ -54,6 +54,7 @@ class ChatCompletionRequest(BaseModel):
     filePath: Optional[str] = Field(None, description="Optional path to a file in the repository to include in the prompt")
     github_token: Optional[str] = Field(None, description="GitHub personal access token for private repositories")
     gitlab_token: Optional[str] = Field(None, description="GitLab personal access token for private repositories")
+    bitbucket_token: Optional[str] = Field(None, description="Bitbucket personal access token for private repositories")
 
 class WikiPage(BaseModel):
     """
