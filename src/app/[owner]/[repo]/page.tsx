@@ -50,7 +50,8 @@ const addTokensToRequestBody = (
   requestBody: Record<string, any>,
   githubToken: string,
   gitlabToken: string,
-  repoType: string
+  repoType: string,
+  localOllama: boolean = false
 ): void => {
   if (githubToken && repoType === 'github') {
     requestBody.github_token = githubToken;
@@ -58,6 +59,7 @@ const addTokensToRequestBody = (
   if (gitlabToken && repoType === 'gitlab') {
     requestBody.gitlab_token = gitlabToken;
   }
+  requestBody.local_ollama = localOllama;
 };
 
 const createGithubHeaders = (githubToken: string): HeadersInit => {
@@ -97,6 +99,7 @@ export default function RepoWikiPage() {
   const githubToken = searchParams.get('github_token') || '';
   const gitlabToken = searchParams.get('gitlab_token') || '';
   const repoType = searchParams.get('type') || 'github';
+  const localOllama = searchParams.get('local_ollama') === 'true';
 
   // Initialize repo info
   const repoInfo = useMemo(() => ({
@@ -248,8 +251,8 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
           }]
         };
 
-        // Add tokens if available
-        addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
+        // Add tokens and localOllama flag
+        addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type, localOllama);
 
         const response = await fetch('http://localhost:8001/chat/completions/stream', {
           method: 'POST',
@@ -414,8 +417,8 @@ IMPORTANT:
         }]
       };
 
-      // Add tokens if available
-      addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type);
+      // Add tokens and localOllama flag
+      addTokensToRequestBody(requestBody, githubToken, gitlabToken, repoInfo.type, localOllama);
 
       const response = await fetch('http://localhost:8001/chat/completions/stream', {
         method: 'POST',
@@ -1113,6 +1116,7 @@ IMPORTANT:
               }
               githubToken={githubToken}
               gitlabToken={gitlabToken}
+              localOllama={localOllama}
             />
           </div>
         )}

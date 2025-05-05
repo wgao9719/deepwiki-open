@@ -20,9 +20,10 @@ interface AskProps {
   repoUrl: string;
   githubToken?: string;
   gitlabToken?: string;
+  localOllama?: boolean;
 }
 
-const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
+const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, localOllama = false }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -205,7 +206,8 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
       // Prepare the request body
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
-        messages: newHistory
+        messages: newHistory,
+        local_ollama: localOllama
       };
 
       // Add tokens if available
@@ -377,7 +379,8 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken }) => {
       // Prepare request body
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
-        messages: newHistory
+        messages: newHistory,
+        local_ollama: localOllama
       };
 
       // Add tokens if available

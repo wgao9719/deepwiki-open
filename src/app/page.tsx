@@ -41,6 +41,7 @@ export default function Home() {
   const [showTokenInputs, setShowTokenInputs] = useState(false);
   const [githubToken, setGithubToken] = useState('');
   const [gitlabToken, setGitlabToken] = useState('');
+  const [localOllama, setLocalOllama] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -128,6 +129,8 @@ export default function Home() {
     if (type !== 'github') {
       params.append('type', type);
     }
+    // Add local_ollama parameter
+    params.append('local_ollama', localOllama.toString());
     
     const queryString = params.toString() ? `?${params.toString()}` : '';
     
@@ -174,14 +177,28 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="flex items-center">
-              <button
-                type="button"
-                onClick={() => setShowTokenInputs(!showTokenInputs)}
-                className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 flex items-center"
-              >
-                {showTokenInputs ? '- Hide access tokens' : '+ Add access tokens for private repositories'}
-              </button>
+            <div className="flex flex-col w-full space-y-2">
+              <div className="flex items-center">
+                <input
+                  id="local-ollama"
+                  type="checkbox"
+                  checked={localOllama}
+                  onChange={(e) => setLocalOllama(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <label htmlFor="local-ollama" className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                  Local Ollama Model (Experimental)
+                </label>
+              </div>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setShowTokenInputs(!showTokenInputs)}
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 flex items-center"
+                >
+                  {showTokenInputs ? '- Hide access tokens' : '+ Add access tokens for private repositories'}
+                </button>
+              </div>
             </div>
 
             {showTokenInputs && (

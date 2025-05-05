@@ -226,10 +226,10 @@ def read_all_documents(path: str):
 def prepare_data_pipeline():
     """Creates and returns the data transformation pipeline."""
     splitter = TextSplitter(**configs["text_splitter"])
-    # TODO: Choose bween Ollama and OpenAI embedder
+    # TODO: Choose between Ollama and OpenAI embedder
     embedder = adal.Embedder(
         model_client=configs["embedder_ollama"]["model_client"](),
-        model_kwargs=configs["generator_ollama"]["model_kwargs"],
+        model_kwargs=configs["embedder_ollama"]["model_kwargs"],
     )
     # embedder_transformer = ToEmbeddings(
     #     embedder=embedder, batch_size=configs["embedder"]["batch_size"]
