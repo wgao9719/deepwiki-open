@@ -223,18 +223,34 @@ def read_all_documents(path: str):
     logger.info(f"Found {len(documents)} documents")
     return documents
 
-def prepare_data_pipeline():
-    """Creates and returns the data transformation pipeline."""
+def prepare_data_pipeline(local_ollama: bool = False):
+    """
+    Creates and returns the data transformation pipeline.
+    
+    Args:
+        local_ollama (bool): Whether to use local Ollama for embedding (default: False)
+    
+    Returns:
+        adal.Sequential: The data transformation pipeline
+    """
     splitter = TextSplitter(**configs["text_splitter"])
-    # TODO: Choose between Ollama and OpenAI embedder
-    embedder = adal.Embedder(
-        model_client=configs["embedder_ollama"]["model_client"](),
-        model_kwargs=configs["embedder_ollama"]["model_kwargs"],
-    )
-    # embedder_transformer = ToEmbeddings(
-    #     embedder=embedder, batch_size=configs["embedder"]["batch_size"]
-    # )
-    embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
+    
+    if local_ollama:
+        # Use Ollama embedder
+        embedder = adal.Embedder(
+            model_client=configs["embedder_ollama"]["model_client"](),
+            model_kwargs=configs["embedder_ollama"]["model_kwargs"],
+        )
+        embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
+    else:
+        # Use OpenAI embedder
+        embedder = adal.Embedder(
+            model_client=configs["embedder"]["model_client"](),
+            model_kwargs=configs["embedder"]["model_kwargs"],
+        )
+        embedder_transformer = ToEmbeddings(
+            embedder=embedder, batch_size=configs["embedder"]["batch_size"]
+        )
     
     data_transformer = adal.Sequential(
         splitter, embedder_transformer
@@ -242,7 +258,7 @@ def prepare_data_pipeline():
     return data_transformer
 
 def transform_documents_and_save_to_db(
-    documents: List[Document], db_path: str
+    documents: List[Document], db_path: str, local_ollama: bool = False
 ) -> LocalDB:
     """
     Transforms a list of documents and saves them to a local database.
@@ -250,9 +266,10 @@ def transform_documents_and_save_to_db(
     Args:
         documents (list): A list of `Document` objects.
         db_path (str): The path to the local database file.
+        local_ollama (bool): Whether to use local Ollama for embedding (default: False)
     """
     # Get the data transformer
-    data_transformer = prepare_data_pipeline()
+    data_transformer = prepare_data_pipeline(local_ollama)
 
     # Save the documents to a local database
     db = LocalDB()
@@ -470,20 +487,21 @@ class DatabaseManager:
         self.repo_url_or_path = None
         self.repo_paths = None
 
-    def prepare_database(self, repo_url_or_path: str, access_token: str = None) -> List[Document]:
+    def prepare_database(self, repo_url_or_path: str, access_token: str = None, local_ollama: bool = False) -> List[Document]:
         """
         Create a new database from the repository.
 
         Args:
             repo_url_or_path (str): The URL or local path of the repository
             access_token (str, optional): Access token for private repositories
+            local_ollama (bool): Whether to use local Ollama for embedding (default: False)
 
         Returns:
             List[Document]: List of Document objects
         """
         self.reset_database()
         self._create_repo(repo_url_or_path, access_token)
-        return self.prepare_db_index()
+        return self.prepare_db_index(local_ollama=local_ollama)
 
     def reset_database(self):
         """
@@ -551,10 +569,15 @@ class DatabaseManager:
             logger.error(f"Failed to create repository structure: {e}")
             raise
 
-    def prepare_db_index(self) -> List[Document]:
+    def prepare_db_index(self, local_ollama: bool = False) -> List[Document]:
         """
         Prepare the indexed database for the repository.
-        :return: List of Document objects
+        
+        Args:
+            local_ollama (bool): Whether to use local Ollama for embedding (default: False)
+            
+        Returns:
+            List[Document]: List of Document objects
         """
         # check the database
         if self.repo_paths and os.path.exists(self.repo_paths["save_db_file"]):
@@ -573,7 +596,7 @@ class DatabaseManager:
         logger.info("Creating new database...")
         documents = read_all_documents(self.repo_paths["save_repo_dir"])
         self.db = transform_documents_and_save_to_db(
-            documents, self.repo_paths["save_db_file"]
+            documents, self.repo_paths["save_db_file"], local_ollama=local_ollama
         )
         logger.info(f"Total documents: {len(documents)}")
         transformed_docs = self.db.get_transformed_data(key="split_and_embed")

@@ -58,8 +58,6 @@ class ChatCompletionRequest(BaseModel):
     filePath: Optional[str] = Field(None, description="Optional path to a file in the repository to include in the prompt")
     github_token: Optional[str] = Field(None, description="GitHub personal access token for private repositories")
     gitlab_token: Optional[str] = Field(None, description="GitLab personal access token for private repositories")
-
-    # TODO: Read this flag from the FE
     local_ollama: Optional[bool] = Field(False, description="Use locally run Ollama model for embedding and generation")
 
 @app.post("/chat/completions/stream")

@@ -295,7 +295,7 @@ IMPORTANT FORMATTING RULES:
         """
         self.initialize_db_manager()
         self.repo_url_or_path = repo_url_or_path
-        self.transformed_docs = self.db_manager.prepare_database(repo_url_or_path, access_token)
+        self.transformed_docs = self.db_manager.prepare_database(repo_url_or_path, access_token, local_ollama=local_ollama)
         logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
         retreive_embedder = self.query_embedder if local_ollama else self.embedder
