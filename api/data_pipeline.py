@@ -484,7 +484,7 @@ def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str 
 
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode('utf-8')
-        raise ValueError(f"Error fetching file content: {error_msg}")
+        raise ValueError(f"Error fetching file content: {error_msg} (status code: {e.returncode})")
     except Exception as e:
         raise ValueError(f"Failed to get file content: {str(e)}")
 

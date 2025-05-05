@@ -803,38 +803,28 @@ IMPORTANT:
 
         // First get project info to determine default branch
         const projectInfoUrl = `https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}`;
-        console.log(`Fetching Bitbucket project info: ${projectInfoUrl}`);
         try {
           const response = await fetch(projectInfoUrl, { headers });
           
-          console.log('Bitbucket project info response status:', response.status);
           const responseText = await response.text();
-          console.log('Bitbucket project info response:', responseText);
 
           if (response.ok) {
             const projectData = JSON.parse(responseText);
-            console.log('Parsed project data:', projectData);
             defaultBranch = projectData.mainbranch.name;
-            console.log('Default branch:', defaultBranch);
 
             const apiUrl = `https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}/src/${defaultBranch}/?recursive=true&per_page=100`;
-            console.log('Fetching repository structure from:', apiUrl);
             try {
               const response = await fetch(apiUrl, {
                 headers
               });
 
-              console.log('Repository structure response status:', response.status);
               const structureResponseText = await response.text();
-              console.log('Repository structure response:', structureResponseText);
 
               if (response.ok) {
                 filesData = JSON.parse(structureResponseText);
-                console.log('Parsed files data:', filesData);
               } else {
                 const errorData = structureResponseText;
                 apiErrorDetails = `Status: ${response.status}, Response: ${errorData}`;
-                console.error(`Error fetching Bitbucket repository structure: ${apiErrorDetails}`);
               }
             } catch (err) {
               console.error(`Network error fetching Bitbucket branch ${defaultBranch}:`, err);
@@ -842,7 +832,6 @@ IMPORTANT:
           } else {
             const errorData = responseText;
             apiErrorDetails = `Status: ${response.status}, Response: ${errorData}`;
-            console.error(`Error fetching Bitbucket project info: ${apiErrorDetails}`);
           }
         } catch (err) {
           console.error("Network error fetching Bitbucket project info:", err);
@@ -872,7 +861,6 @@ IMPORTANT:
 
           if (readmeResponse.ok) {
             readmeContent = await readmeResponse.text();
-            console.log('Successfully fetched Bitbucket README.md');
           } else {
             console.warn(`Could not fetch Bitbucket README.md, status: ${readmeResponse.status}`);
           }
@@ -960,7 +948,6 @@ IMPORTANT:
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      console.log(`Wiki exported successfully as ${format}`);
     } catch (err) {
       console.error('Error exporting wiki:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error during export';
