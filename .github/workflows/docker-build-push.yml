@@ -67,15 +67,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Extract package name from repository
-          PACKAGE_NAME=$(echo "${{ github.repository }}" | tr '/' '_' | tr '[:upper:]' '[:lower:]')
-
           # Wait a moment for the package to be available
           sleep 10
 
           # Use GitHub CLI to set package visibility to public
+          echo "Setting package visibility to public..."
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
-            "/orgs/${{ github.repository_owner }}/packages/container/deepwiki-open/visibility" \
+            "/orgs/AsyncFuncAI/packages/container/deepwiki-open/visibility" \
             -f visibility=public
