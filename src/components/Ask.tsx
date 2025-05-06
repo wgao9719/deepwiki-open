@@ -21,11 +21,13 @@ interface AskProps {
   githubToken?: string;
   gitlabToken?: string;
   bitbucketToken?: string;
+  localOllama?: boolean;
 }
+
 
 const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
 
-const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken }) => {
+const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -208,7 +210,8 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
       // Prepare the request body
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
-        messages: newHistory
+        messages: newHistory,
+        local_ollama: localOllama
       };
 
       // Add tokens if available
@@ -383,7 +386,8 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
       // Prepare request body
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
-        messages: newHistory
+        messages: newHistory,
+        local_ollama: localOllama
       };
 
       // Add tokens if available

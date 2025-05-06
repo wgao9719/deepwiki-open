@@ -55,7 +55,8 @@ const addTokensToRequestBody = (
   githubToken: string,
   gitlabToken: string,
   bitbucketToken: string,
-  repoType: string
+  repoType: string,
+  localOllama: boolean = false,
 ): void => {
   if (githubToken && repoType === 'github') {
     requestBody.github_token = githubToken;
@@ -66,6 +67,7 @@ const addTokensToRequestBody = (
   if (bitbucketToken && repoType === 'bitbucket') {
     requestBody.bitbucket_token = bitbucketToken;
   }
+  requestBody.local_ollama = localOllama;
 };
 
 const createGithubHeaders = (githubToken: string): HeadersInit => {
@@ -119,6 +121,7 @@ export default function RepoWikiPage() {
   const gitlabToken = searchParams.get('gitlab_token') || '';
   const bitbucketToken = searchParams.get('bitbucket_token') || '';
   const repoType = searchParams.get('type') || 'github';
+  const localOllama = searchParams.get('local_ollama') === 'true';
 
   // Initialize repo info
   const repoInfo = useMemo(() => ({
@@ -271,7 +274,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         };
 
         // Add tokens if available
-        addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type);
+        addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama);
 
         const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
           method: 'POST',
@@ -437,7 +440,7 @@ IMPORTANT:
       };
 
       // Add tokens if available
-      addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type);
+      addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama);
 
       const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
@@ -1217,6 +1220,7 @@ IMPORTANT:
               githubToken={githubToken}
               gitlabToken={gitlabToken}
               bitbucketToken={bitbucketToken}
+              localOllama={localOllama}
             />
           </div>
         )}

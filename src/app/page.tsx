@@ -39,6 +39,7 @@ export default function Home() {
   const router = useRouter();
   const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
   const [showTokenInputs, setShowTokenInputs] = useState(false);
+  const [localOllama, setLocalOllama] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<'github' | 'gitlab' | 'bitbucket'>('github');
   const [accessToken, setAccessToken] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +139,8 @@ export default function Home() {
     if (type !== 'github') {
       params.append('type', type);
     }
+    // Add local_ollama parameter
+    params.append('local_ollama', localOllama.toString());
     
     const queryString = params.toString() ? `?${params.toString()}` : '';
     
@@ -189,7 +192,20 @@ export default function Home() {
                 {isSubmitting ? 'Processing...' : 'Generate Wiki'}
               </button>
             </div>
-
+            <div className="flex flex-col w-full space-y-2">
+              <div className="flex items-center">
+                <input
+                  id="local-ollama"
+                  type="checkbox"
+                  checked={localOllama}
+                  onChange={(e) => setLocalOllama(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <label htmlFor="local-ollama" className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                  Local Ollama Model (Experimental)
+                </label>
+              </div>
+            </div>
             <div className="flex items-center relative">
               <button
                 type="button"
@@ -198,7 +214,6 @@ export default function Home() {
               >
                 {showTokenInputs ? '- Hide access tokens' : '+ Add access tokens for private repositories'}
               </button>
-
               {showTokenInputs && (
                 <>
                   <div className="fixed inset-0 bg-black/20 dark:bg-black/40 z-40" onClick={() => setShowTokenInputs(false)} />

@@ -12,6 +12,7 @@ import glob
 from adalflow.utils import get_adalflow_default_root_path
 from adalflow.core.db import LocalDB
 from api.config import configs
+from api.ollama_patch import OllamaDocumentProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -23,19 +24,23 @@ logger = logging.getLogger(__name__)
 # Maximum token limit for OpenAI embedding models
 MAX_EMBEDDING_TOKENS = 8192
 
-def count_tokens(text: str, model: str = "text-embedding-3-small") -> int:
+def count_tokens(text: str, local_ollama: bool = False) -> int:
     """
     Count the number of tokens in a text string using tiktoken.
 
     Args:
         text (str): The text to count tokens for.
-        model (str): The model to use for tokenization.
+        local_ollama (bool, optional): Whether using local Ollama embeddings. Default is False.
 
     Returns:
         int: The number of tokens in the text.
     """
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        if local_ollama:
+            encoding = tiktoken.get_encoding("cl100k_base")
+        else:
+            encoding = tiktoken.encoding_for_model("text-embedding-3-small")
+            
         return len(encoding.encode(text))
     except Exception as e:
         # Fallback to a simple approximation if tiktoken fails
@@ -114,12 +119,13 @@ def download_repo(repo_url: str, local_path: str, access_token: str = None):
 # Alias for backward compatibility
 download_github_repo = download_repo
 
-def read_all_documents(path: str):
+def read_all_documents(path: str, local_ollama: bool = False):
     """
     Recursively reads all documents in a directory and its subdirectories.
 
     Args:
         path (str): The root directory path.
+        local_ollama (bool): Whether to use local Ollama for token counting. Default is False.
 
     Returns:
         list: A list of Document objects with metadata.
@@ -162,7 +168,7 @@ def read_all_documents(path: str):
                     )
 
                     # Check token count
-                    token_count = count_tokens(content)
+                    token_count = count_tokens(content, local_ollama)
                     if token_count > MAX_EMBEDDING_TOKENS:
                         logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
                         continue
@@ -201,7 +207,7 @@ def read_all_documents(path: str):
                     relative_path = os.path.relpath(file_path, path)
 
                     # Check token count
-                    token_count = count_tokens(content)
+                    token_count = count_tokens(content, local_ollama)
                     if token_count > MAX_EMBEDDING_TOKENS:
                         logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
                         continue
@@ -224,23 +230,42 @@ def read_all_documents(path: str):
     logger.info(f"Found {len(documents)} documents")
     return documents
 
-def prepare_data_pipeline():
-    """Creates and returns the data transformation pipeline."""
+def prepare_data_pipeline(local_ollama: bool = False):
+    """
+    Creates and returns the data transformation pipeline.
+    
+    Args:
+        local_ollama (bool): Whether to use local Ollama for embedding (default: False)
+    
+    Returns:
+        adal.Sequential: The data transformation pipeline
+    """
     splitter = TextSplitter(**configs["text_splitter"])
-    embedder = adal.Embedder(
-        model_client=configs["embedder"]["model_client"](),
-        model_kwargs=configs["embedder"]["model_kwargs"],
-    )
-    embedder_transformer = ToEmbeddings(
-        embedder=embedder, batch_size=configs["embedder"]["batch_size"]
-    )
+    
+    if local_ollama:
+        # Use Ollama embedder
+        embedder = adal.Embedder(
+            model_client=configs["embedder_ollama"]["model_client"](),
+            model_kwargs=configs["embedder_ollama"]["model_kwargs"],
+        )
+        embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
+    else:
+        # Use OpenAI embedder
+        embedder = adal.Embedder(
+            model_client=configs["embedder"]["model_client"](),
+            model_kwargs=configs["embedder"]["model_kwargs"],
+        )
+        embedder_transformer = ToEmbeddings(
+            embedder=embedder, batch_size=configs["embedder"]["batch_size"]
+        )
+    
     data_transformer = adal.Sequential(
         splitter, embedder_transformer
     )  # sequential will chain together splitter and embedder
     return data_transformer
 
 def transform_documents_and_save_to_db(
-    documents: List[Document], db_path: str
+    documents: List[Document], db_path: str, local_ollama: bool = False
 ) -> LocalDB:
     """
     Transforms a list of documents and saves them to a local database.
@@ -248,9 +273,10 @@ def transform_documents_and_save_to_db(
     Args:
         documents (list): A list of `Document` objects.
         db_path (str): The path to the local database file.
+        local_ollama (bool): Whether to use local Ollama for embedding (default: False)
     """
     # Get the data transformer
-    data_transformer = prepare_data_pipeline()
+    data_transformer = prepare_data_pipeline(local_ollama)
 
     # Save the documents to a local database
     db = LocalDB()
@@ -533,20 +559,21 @@ class DatabaseManager:
         self.repo_url_or_path = None
         self.repo_paths = None
 
-    def prepare_database(self, repo_url_or_path: str, access_token: str = None) -> List[Document]:
+    def prepare_database(self, repo_url_or_path: str, access_token: str = None, local_ollama: bool = False) -> List[Document]:
         """
         Create a new database from the repository.
 
         Args:
             repo_url_or_path (str): The URL or local path of the repository
             access_token (str, optional): Access token for private repositories
+            local_ollama (bool): Whether to use local Ollama for embedding (default: False)
 
         Returns:
             List[Document]: List of Document objects
         """
         self.reset_database()
         self._create_repo(repo_url_or_path, access_token)
-        return self.prepare_db_index()
+        return self.prepare_db_index(local_ollama=local_ollama)
 
     def reset_database(self):
         """
@@ -617,10 +644,15 @@ class DatabaseManager:
             logger.error(f"Failed to create repository structure: {e}")
             raise
 
-    def prepare_db_index(self) -> List[Document]:
+    def prepare_db_index(self, local_ollama: bool = False) -> List[Document]:
         """
         Prepare the indexed database for the repository.
-        :return: List of Document objects
+        
+        Args:
+            local_ollama (bool): Whether to use local Ollama for embedding (default: False)
+            
+        Returns:
+            List[Document]: List of Document objects
         """
         # check the database
         if self.repo_paths and os.path.exists(self.repo_paths["save_db_file"]):
@@ -637,9 +669,9 @@ class DatabaseManager:
 
         # prepare the database
         logger.info("Creating new database...")
-        documents = read_all_documents(self.repo_paths["save_repo_dir"])
+        documents = read_all_documents(self.repo_paths["save_repo_dir"], local_ollama=local_ollama)
         self.db = transform_documents_and_save_to_db(
-            documents, self.repo_paths["save_db_file"]
+            documents, self.repo_paths["save_db_file"], local_ollama=local_ollama
         )
         logger.info(f"Total documents: {len(documents)}")
         transformed_docs = self.db.get_transformed_data(key="split_and_embed")
