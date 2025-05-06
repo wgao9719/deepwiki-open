@@ -11,6 +11,7 @@ from api.data_pipeline import count_tokens, get_file_content
 from api.rag import RAG
 from api.config import configs
 from adalflow.components.model_client.ollama_client import OllamaClient
+from api.openrouter_client import OpenRouterClient
 from adalflow.core.types import ModelType
 
 # Configure logging
@@ -59,6 +60,8 @@ class ChatCompletionRequest(BaseModel):
     github_token: Optional[str] = Field(None, description="GitHub personal access token for private repositories")
     gitlab_token: Optional[str] = Field(None, description="GitLab personal access token for private repositories")
     local_ollama: Optional[bool] = Field(False, description="Use locally run Ollama model for embedding and generation")
+    use_openrouter: Optional[bool] = Field(False, description="Use OpenRouter API for generation")
+    openrouter_model: Optional[str] = Field("openai/gpt-4o", description="OpenRouter model to use (e.g., 'openai/gpt-4o', 'anthropic/claude-3-opus')")
     bitbucket_token: Optional[str] = Field(None, description="Bitbucket personal access token for private repositories")
 
 @app.post("/chat/completions/stream")
@@ -327,7 +330,7 @@ This file contains...
 - Think step by step and structure your answer logically
 - Start with the most relevant information that directly addresses the user's query
 - Be precise and technical when discussing code
-- Your response language should be in the same language as the user's query 
+- Your response language should be in the same language as the user's query
 </guidelines>
 
 <style>
@@ -382,10 +385,10 @@ This file contains...
             prompt += "<note>Answering without retrieval augmentation.</note>\n\n"
 
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
-        
+
         if request.local_ollama:
             prompt += " /no_think"
-            
+
             model = OllamaClient()
             model_kwargs = {
                 "model": configs["generator_ollama"]["model_kwargs"]["model"],
@@ -395,7 +398,28 @@ This file contains...
                     "top_p": configs["generator_ollama"]["model_kwargs"]["options"]["top_p"]
                 }
             }
-            
+
+            api_kwargs = model.convert_inputs_to_api_kwargs(
+                input=prompt,
+                model_kwargs=model_kwargs,
+                model_type=ModelType.LLM
+            )
+        elif request.use_openrouter:
+            logger.info(f"Using OpenRouter with model: {request.openrouter_model}")
+
+            # Check if OpenRouter API key is set
+            if not os.environ.get("OPENROUTER_API_KEY"):
+                logger.warning("OPENROUTER_API_KEY environment variable is not set, but continuing with request")
+                # We'll let the OpenRouterClient handle this and return a friendly error message
+
+            model = OpenRouterClient()
+            model_kwargs = {
+                "model": request.openrouter_model,
+                "stream": True,
+                "temperature": configs["generator_openrouter"]["model_kwargs"]["temperature"],
+                "top_p": configs["generator_openrouter"]["model_kwargs"]["top_p"]
+            }
+
             api_kwargs = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
@@ -424,6 +448,17 @@ This file contains...
                         text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                         if text and not text.startswith('model=') and not text.startswith('created_at='):
                             yield text
+                elif request.use_openrouter:
+                    try:
+                        # Get the response and handle it properly using the previously created api_kwargs
+                        logger.info("Making OpenRouter API call")
+                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                        # Handle streaming response from OpenRouter
+                        async for chunk in response:
+                            yield chunk
+                    except Exception as e_openrouter:
+                        logger.error(f"Error with OpenRouter API: {str(e_openrouter)}")
+                        yield f"\nError with OpenRouter API: {str(e_openrouter)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
                 else:
                     # Generate streaming response
                     response = model.generate_content(prompt, stream=True)
@@ -432,9 +467,9 @@ This file contains...
                         if hasattr(chunk, 'text'):
                             yield chunk.text
 
-            except Exception as e:
-                logger.error(f"Error in streaming response: {str(e)}")
-                error_message = str(e)
+            except Exception as e_outer:
+                logger.error(f"Error in streaming response: {str(e_outer)}")
+                error_message = str(e_outer)
 
                 # Check for token limit errors
                 if "maximum context length" in error_message or "token limit" in error_message or "too many tokens" in error_message:
@@ -456,22 +491,41 @@ This file contains...
 
                         if request.local_ollama:
                             simplified_prompt += " /no_think"
-                            
+
                             # Create new api_kwargs with the simplified prompt
                             fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                 input=simplified_prompt,
                                 model_kwargs=model_kwargs,
                                 model_type=ModelType.LLM
                             )
-                            
+
                             # Get the response using the simplified prompt
                             fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
-                            
+
                             # Handle streaming fallback_response from Ollama
                             async for chunk in fallback_response:
                                 text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                                 if text and not text.startswith('model=') and not text.startswith('created_at='):
                                     yield text
+                        elif request.use_openrouter:
+                            try:
+                                # Create new api_kwargs with the simplified prompt
+                                fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                    input=simplified_prompt,
+                                    model_kwargs=model_kwargs,
+                                    model_type=ModelType.LLM
+                                )
+
+                                # Get the response using the simplified prompt
+                                logger.info("Making fallback OpenRouter API call")
+                                fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                                # Handle streaming fallback_response from OpenRouter
+                                async for chunk in fallback_response:
+                                    yield chunk
+                            except Exception as e_fallback:
+                                logger.error(f"Error with OpenRouter API fallback: {str(e_fallback)}")
+                                yield f"\nError with OpenRouter API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
                         else:
                             # Try again with simplified prompt
                             fallback_response = model.generate_content(simplified_prompt, stream=True)
@@ -494,8 +548,8 @@ This file contains...
 
     except HTTPException:
         raise
-    except Exception as e:
-        error_msg = f"Error in streaming chat completion: {str(e)}"
+    except Exception as e_handler:
+        error_msg = f"Error in streaming chat completion: {str(e_handler)}"
         logger.error(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
 
@@ -511,3 +565,4 @@ async def root():
             ]
         }
     }
+

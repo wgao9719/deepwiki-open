@@ -2,6 +2,8 @@ from adalflow import GoogleGenAIClient, OllamaClient
 from adalflow.components.model_client.openai_client import OpenAIClient
 import os
 
+from api.openrouter_client import OpenRouterClient
+
 # Configuration for the isolated API
 configs = {
     "embedder": {
@@ -40,6 +42,14 @@ configs = {
             }
         },
     },
+    "generator_openrouter": {
+        "model_client": OpenRouterClient,
+        "model_kwargs": {
+            "model": "openai/gpt-4o",
+            "temperature": 0.7,
+            "top_p": 0.8,
+        },
+    },
     "text_splitter": {
         "split_by": "word",
         "chunk_size": 350,
@@ -47,7 +57,7 @@ configs = {
     },
     "file_filters": {
         "excluded_dirs": [
-            "./.venv/", "./venv/", "./env/", "./virtualenv/", 
+            "./.venv/", "./venv/", "./env/", "./virtualenv/",
             "./node_modules/", "./bower_components/", "./jspm_packages/",
             "./.git/", "./.svn/", "./.hg/", "./.bzr/",
             "./__pycache__/", "./.pytest_cache/", "./.mypy_cache/", "./.ruff_cache/", "./.coverage/",
@@ -84,9 +94,12 @@ configs = {
 # Get API keys from environment variables
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
 # Set keys in environment (in case they're needed elsewhere in the code)
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 if GOOGLE_API_KEY:
     os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+if OPENROUTER_API_KEY:
+    os.environ["OPENROUTER_API_KEY"] = OPENROUTER_API_KEY

@@ -22,12 +22,14 @@ interface AskProps {
   gitlabToken?: string;
   bitbucketToken?: string;
   localOllama?: boolean;
+  useOpenRouter?: boolean;
+  openRouterModel?: string;
 }
 
 
 const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
 
-const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false }) => {
+const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false, useOpenRouter = false, openRouterModel = 'openai/gpt-4o' }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -211,8 +213,14 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
         messages: newHistory,
-        local_ollama: localOllama
+        local_ollama: localOllama,
+        use_openrouter: useOpenRouter
       };
+
+      // Add OpenRouter model if using OpenRouter
+      if (useOpenRouter) {
+        requestBody.openrouter_model = openRouterModel;
+      }
 
       // Add tokens if available
       if (githubToken && repoUrl.includes('github.com')) {
@@ -387,8 +395,14 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
       const requestBody: Record<string, unknown> = {
         repo_url: repoUrl,
         messages: newHistory,
-        local_ollama: localOllama
+        local_ollama: localOllama,
+        use_openrouter: useOpenRouter
       };
+
+      // Add OpenRouter model if using OpenRouter
+      if (useOpenRouter) {
+        requestBody.openrouter_model = openRouterModel;
+      }
 
       // Add tokens if available
       if (githubToken && repoUrl.includes('github.com')) {

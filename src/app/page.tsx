@@ -40,6 +40,8 @@ export default function Home() {
   const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
   const [showTokenInputs, setShowTokenInputs] = useState(false);
   const [localOllama, setLocalOllama] = useState(false);
+  const [useOpenRouter, setUseOpenRouter] = useState(false);
+  const [openRouterModel, setOpenRouterModel] = useState('openai/gpt-4o');
   const [selectedPlatform, setSelectedPlatform] = useState<'github' | 'gitlab' | 'bitbucket'>('github');
   const [accessToken, setAccessToken] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -105,26 +107,26 @@ export default function Home() {
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Prevent multiple submissions
     if (isSubmitting) {
       console.log('Form submission already in progress, ignoring duplicate click');
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     // Parse repository input
     const parsedRepo = parseRepositoryInput(repositoryInput);
-    
+
     if (!parsedRepo) {
       setError('Invalid repository format. Use "owner/repo", "https://github.com/owner/repo", "https://gitlab.com/owner/repo", or "https://bitbucket.org/owner/repo" format.');
       setIsSubmitting(false);
       return;
     }
-    
+
     const { owner, repo, type } = parsedRepo;
-    
+
     // Store tokens in query params if they exist
     const params = new URLSearchParams();
     if (accessToken) {
@@ -139,14 +141,18 @@ export default function Home() {
     if (type !== 'github') {
       params.append('type', type);
     }
-    // Add local_ollama parameter
+    // Add model parameters
     params.append('local_ollama', localOllama.toString());
-    
+    params.append('use_openrouter', useOpenRouter.toString());
+    if (useOpenRouter) {
+      params.append('openrouter_model', openRouterModel);
+    }
+
     const queryString = params.toString() ? `?${params.toString()}` : '';
-    
+
     // Navigate to the dynamic route
     router.push(`/${owner}/${repo}${queryString}`);
-    
+
     // The isSubmitting state will be reset when the component unmounts during navigation
   };
 
@@ -164,10 +170,10 @@ export default function Home() {
               <div className="relative flex-1">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   {
-                    repositoryInput.includes('gitlab.com') 
-                    ? <FaGitlab className="text-gray-400" /> 
-                    : repositoryInput.includes('bitbucket.org') 
-                    ? <FaBitbucket className="text-gray-400" /> 
+                    repositoryInput.includes('gitlab.com')
+                    ? <FaGitlab className="text-gray-400" />
+                    : repositoryInput.includes('bitbucket.org')
+                    ? <FaBitbucket className="text-gray-400" />
                     : <FaGithub className="text-gray-400" />
                   }
                 </div>
@@ -198,13 +204,60 @@ export default function Home() {
                   id="local-ollama"
                   type="checkbox"
                   checked={localOllama}
-                  onChange={(e) => setLocalOllama(e.target.checked)}
+                  onChange={(e) => {
+                    setLocalOllama(e.target.checked);
+                    if (e.target.checked) {
+                      setUseOpenRouter(false);
+                    }
+                  }}
                   className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
                 <label htmlFor="local-ollama" className="ml-2 text-xs text-gray-700 dark:text-gray-300">
                   Local Ollama Model (Experimental)
                 </label>
               </div>
+
+              <div className="flex items-center">
+                <input
+                  id="use-openrouter"
+                  type="checkbox"
+                  checked={useOpenRouter}
+                  onChange={(e) => {
+                    setUseOpenRouter(e.target.checked);
+                    if (e.target.checked) {
+                      setLocalOllama(false);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <label htmlFor="use-openrouter" className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                  Use OpenRouter API
+                </label>
+              </div>
+
+              {useOpenRouter && (
+                <div className="ml-6 mt-1">
+                  <label htmlFor="openrouter-model" className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                    OpenRouter Model
+                  </label>
+                  <select
+                    id="openrouter-model"
+                    value={openRouterModel}
+                    onChange={(e) => setOpenRouterModel(e.target.value)}
+                    className="block w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="openai/gpt-4o">OpenAI GPT-4.0</option>
+                    <option value="openai/gpt-4.1">OpenAI GPT-4.1</option>
+                    <option value="openai/o1">OpenAI o1</option>
+                    <option value="openai/o1-mini">OpenAI o1-mini</option>
+                    <option value="anthropic/claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet</option>
+                    <option value="anthropic/claude-3-7-sonnet">Anthropic Claude 3.7 Sonnet</option>
+                    <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash</option>
+                    <option value="meta-llama/llama-3-70b-instruct">Meta Llama 3 70B Instruct</option>
+                    <option value="mistralai/mixtral-8x22b-instruct">Mistral Mixtral 8x22B Instruct</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex items-center relative">
               <button

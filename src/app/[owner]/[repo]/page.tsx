@@ -48,7 +48,6 @@ const getRepoUrl = (owner: string, repo: string, repoType: string): string => {
     : `https://bitbucket.org/${owner}/${repo}`;
 };
 
- 
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   requestBody: Record<string, any>,
@@ -57,6 +56,8 @@ const addTokensToRequestBody = (
   bitbucketToken: string,
   repoType: string,
   localOllama: boolean = false,
+  useOpenRouter: boolean = false,
+  openRouterModel: string = 'openai/gpt-4o',
 ): void => {
   if (githubToken && repoType === 'github') {
     requestBody.github_token = githubToken;
@@ -68,6 +69,10 @@ const addTokensToRequestBody = (
     requestBody.bitbucket_token = bitbucketToken;
   }
   requestBody.local_ollama = localOllama;
+  requestBody.use_openrouter = useOpenRouter;
+  if (useOpenRouter) {
+    requestBody.openrouter_model = openRouterModel;
+  }
 };
 
 const createGithubHeaders = (githubToken: string): HeadersInit => {
@@ -122,6 +127,8 @@ export default function RepoWikiPage() {
   const bitbucketToken = searchParams.get('bitbucket_token') || '';
   const repoType = searchParams.get('type') || 'github';
   const localOllama = searchParams.get('local_ollama') === 'true';
+  const useOpenRouter = searchParams.get('use_openrouter') === 'true';
+  const openRouterModel = searchParams.get('openrouter_model') || 'openai/gpt-4o';
 
   // Initialize repo info
   const repoInfo = useMemo(() => ({
@@ -274,7 +281,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         };
 
         // Add tokens if available
-        addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama);
+        addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama, useOpenRouter, openRouterModel);
 
         const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
           method: 'POST',
@@ -440,7 +447,7 @@ IMPORTANT:
       };
 
       // Add tokens if available
-      addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama);
+      addTokensToRequestBody(requestBody, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama, useOpenRouter, openRouterModel);
 
       const response = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
         method: 'POST',
@@ -550,7 +557,7 @@ IMPORTANT:
         console.log(`Starting generation for ${pages.length} pages with controlled concurrency`);
 
         // Maximum concurrent requests
-        const MAX_CONCURRENT = 3;
+        const MAX_CONCURRENT = 1;
 
         // Create a queue of pages
         const queue = [...pages];
@@ -617,7 +624,7 @@ IMPORTANT:
     } finally {
       setStructureRequestInProgress(false);
     }
-  }, [generatePageContent, githubToken, gitlabToken, bitbucketToken, repoInfo.type, pagesInProgress.size, structureRequestInProgress]);
+  }, [generatePageContent, githubToken, gitlabToken, bitbucketToken, repoInfo.type, pagesInProgress.size, structureRequestInProgress, localOllama, useOpenRouter, openRouterModel]);
 
   // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
@@ -808,7 +815,7 @@ IMPORTANT:
         const projectInfoUrl = `https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}`;
         try {
           const response = await fetch(projectInfoUrl, { headers });
-          
+
           const responseText = await response.text();
 
           if (response.ok) {
@@ -1221,6 +1228,8 @@ IMPORTANT:
               gitlabToken={gitlabToken}
               bitbucketToken={bitbucketToken}
               localOllama={localOllama}
+              useOpenRouter={useOpenRouter}
+              openRouterModel={openRouterModel}
             />
           </div>
         )}
