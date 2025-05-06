@@ -69,11 +69,21 @@ jobs:
         run: |
           # Wait a moment for the package to be available
           sleep 10
+          
+          # Extract owner and repo name
+          OWNER=$(echo "${{ github.repository }}" | cut -d '/' -f 1)
+          REPO=$(echo "${{ github.repository }}" | cut -d '/' -f 2)
+          PACKAGE_NAME=$(echo "$REPO" | tr '[:upper:]' '[:lower:]')
 
           # Use GitHub CLI to set package visibility to public
           echo "Setting package visibility to public..."
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
-            "/orgs/AsyncFuncAI/packages/container/deepwiki-open/visibility" \
+            "/user/packages/container/$PACKAGE_NAME/visibility" \
+            -f visibility=public || \
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/$OWNER/packages/container/$PACKAGE_NAME/visibility" \
             -f visibility=public
