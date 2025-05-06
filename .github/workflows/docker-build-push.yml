@@ -39,12 +39,14 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
             type=ref,event=branch
             type=ref,event=pr
-            latest
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=DeepWiki Open
+            org.opencontainers.image.description=AI-Powered Wiki Generator for GitHub/GitLab/Bitbucket Repositories
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Create empty .env file for build
         run: touch .env
@@ -58,3 +60,22 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Make package public when merged to main branch
+      - name: Make package public
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract package name from repository
+          PACKAGE_NAME=$(echo "${{ github.repository }}" | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+
+          # Wait a moment for the package to be available
+          sleep 10
+
+          # Use GitHub CLI to set package visibility to public
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${{ github.repository_owner }}/packages/container/deepwiki-open/visibility" \
+            -f visibility=public
