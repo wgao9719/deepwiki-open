@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaCoffee, FaTwitter, FaFolder} from 'react-icons/fa';
+import { FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaCoffee, FaTwitter} from 'react-icons/fa';
 import ThemeToggle from '@/components/theme-toggle';
 import Mermaid from '../components/Mermaid';
 
