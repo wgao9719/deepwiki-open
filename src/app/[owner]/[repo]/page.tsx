@@ -3,7 +3,7 @@
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder } from 'react-icons/fa';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
 import Markdown from '@/components/Markdown';
@@ -73,7 +73,10 @@ const wikiStyles = `
 `;
 
 // Helper functions for token handling and API requests
-const getRepoUrl = (owner: string, repo: string, repoType: string): string => {
+const getRepoUrl = (owner: string, repo: string, repoType: string, localPath?: string): string => {
+  if (repoType === 'local' && localPath) {
+    return localPath;
+  }
   return repoType === 'github'
     ? `https://github.com/${owner}/${repo}`
     : repoType === 'gitlab'
@@ -161,6 +164,7 @@ export default function RepoWikiPage() {
   const gitlabToken = searchParams.get('gitlab_token') || '';
   const bitbucketToken = searchParams.get('bitbucket_token') || '';
   const repoType = searchParams.get('type') || 'github';
+  const localPath = searchParams.get('local_path') ? decodeURIComponent(searchParams.get('local_path') || '') : undefined;
   const localOllama = searchParams.get('local_ollama') === 'true';
   const useOpenRouter = searchParams.get('use_openrouter') === 'true';
   const openRouterModel = searchParams.get('openrouter_model') || 'openai/gpt-4o';
@@ -173,8 +177,9 @@ export default function RepoWikiPage() {
   const repoInfo = useMemo(() => ({
     owner,
     repo,
-    type: repoType
-  }), [owner, repo, repoType]);
+    type: repoType,
+    localPath
+  }), [owner, repo, repoType, localPath]);
 
   // State variables
   const [isLoading, setIsLoading] = useState(true);
@@ -255,7 +260,7 @@ export default function RepoWikiPage() {
         console.log(`Starting content generation for page: ${page.title}`);
 
         // Get repository URL
-        const repoUrl = getRepoUrl(owner, repo, repoInfo.type);
+        const repoUrl = getRepoUrl(owner, repo, repoInfo.type, repoInfo.localPath);
 
         // Create the prompt content - simplified to avoid message dialogs
         const promptContent =
@@ -424,7 +429,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
       setLoadingMessage(messages.loading?.determiningStructure || 'Determining wiki structure...');
 
       // Get repository URL
-      const repoUrl = getRepoUrl(owner, repo, repoInfo.type);
+      const repoUrl = getRepoUrl(owner, repo, repoInfo.type, repoInfo.localPath);
 
       // Prepare request body
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -703,7 +708,22 @@ IMPORTANT:
       let fileTreeData = '';
       let readmeContent = '';
 
-      if (repoInfo.type === 'github') {
+      if (repoInfo.type === 'local' && repoInfo.localPath) {
+        try {
+          const response = await fetch(`${SERVER_BASE_URL}/local_repo/structure?path=${encodeURIComponent(repoInfo.localPath)}`);
+
+          if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Local repository API error (${response.status}): ${errorData}`);
+          }
+
+          const data = await response.json();
+          fileTreeData = data.file_tree;
+          readmeContent = data.readme;
+        } catch (err) {
+          throw err;
+        }
+      } else if (repoInfo.type === 'github') {
         // GitHub API approach
         // Try to get the tree data for common branch names
         let treeData = null;
@@ -967,7 +987,7 @@ IMPORTANT:
       });
 
       // Get repository URL
-      const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type);
+      const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type, repoInfo.localPath);
 
       // Make API call to export wiki
       const response = await fetch(`${SERVER_BASE_URL}/export/wiki`, {
@@ -1125,8 +1145,8 @@ IMPORTANT:
             <p className="text-[var(--foreground)] text-sm mb-3">{error}</p>
             <p className="text-[var(--muted)] text-xs">
               {language === 'ja'
-                ? 'リポジトリが存在し、公開されていることを確認してください。有効な形式は「owner/repo」、「https://github.com/owner/repo」、「https://gitlab.com/owner/repo」、または「https://bitbucket.org/owner/repo」です。'
-                : 'Please check that your repository exists and is public. Valid formats are "owner/repo", "https://github.com/owner/repo", "https://gitlab.com/owner/repo", or "https://bitbucket.org/owner/repo".'
+                ? 'リポジトリが存在し、公開されていることを確認してください。有効な形式は「owner/repo」、「https://github.com/owner/repo」、「https://gitlab.com/owner/repo」、「https://bitbucket.org/owner/repo」、または「C:\path\to\local\folder」、「/path/to/local/folder」です。'
+                : 'Please check that your repository exists and is public. Valid formats are "owner/repo", "https://github.com/owner/repo", "https://gitlab.com/owner/repo", "https://bitbucket.org/owner/repo", or local folder paths like "C:\\path\\to\\folder" or "/path/to/folder".'
               }
             </p>
             <div className="mt-5">
@@ -1148,26 +1168,35 @@ IMPORTANT:
 
               {/* Display repository info */}
               <div className="text-xs text-[var(--muted)] mb-5 flex items-center">
-                {repoInfo.type === 'github' ? (
-                  <FaGithub className="mr-2" />
-                ) : repoInfo.type === 'gitlab' ? (
-                  <FaGitlab className="mr-2" />
+                {repoInfo.type === 'local' ? (
+                  <div className="flex items-center">
+                    <FaFolder className="mr-2" />
+                    <span className="break-all">{repoInfo.localPath}</span>
+                  </div>
                 ) : (
-                  <FaBitbucket className="mr-2" />
+                  <>
+                    {repoInfo.type === 'github' ? (
+                      <FaGithub className="mr-2" />
+                    ) : repoInfo.type === 'gitlab' ? (
+                      <FaGitlab className="mr-2" />
+                    ) : (
+                      <FaBitbucket className="mr-2" />
+                    )}
+                    <a
+                      href={repoInfo.type === 'github'
+                        ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
+                        : repoInfo.type === 'gitlab'
+                        ? `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`
+                        : `https://bitbucket.org/${repoInfo.owner}/${repoInfo.repo}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-[var(--accent-primary)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)]"
+                    >
+                      {repoInfo.owner}/{repoInfo.repo}
+                    </a>
+                  </>
                 )}
-                <a
-                  href={repoInfo.type === 'github'
-                    ? `https://github.com/${repoInfo.owner}/${repoInfo.repo}`
-                    : repoInfo.type === 'gitlab'
-                    ? `https://gitlab.com/${repoInfo.owner}/${repoInfo.repo}`
-                    : `https://bitbucket.org/${repoInfo.owner}/${repoInfo.repo}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-[var(--accent-primary)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)]"
-                >
-                  {repoInfo.owner}/{repoInfo.repo}
-                </a>
               </div>
 
               {/* Export buttons */}
@@ -1315,7 +1344,7 @@ IMPORTANT:
             </div>
             <Ask
               repoUrl={repoInfo.owner && repoInfo.repo
-                ? getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type)
+                ? getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type, repoInfo.localPath)
                 : "https://github.com/AsyncFuncAI/deepwiki-open"
               }
               githubToken={githubToken}

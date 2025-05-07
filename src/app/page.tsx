@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaCoffee, FaTwitter } from 'react-icons/fa';
+import { FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaCoffee, FaTwitter} from 'react-icons/fa';
 import ThemeToggle from '@/components/theme-toggle';
 import Mermaid from '../components/Mermaid';
 
@@ -86,13 +86,29 @@ export default function Home() {
   }, [selectedLanguage, setLanguage]);
 
   // Parse repository URL/input and extract owner and repo
-  const parseRepositoryInput = (input: string): { owner: string, repo: string, type: string, fullPath?: string } | null => {
+  const parseRepositoryInput = (input: string): { owner: string, repo: string, type: string, fullPath?: string, localPath?: string } | null => {
     input = input.trim();
 
     let owner = '', repo = '', type = 'github', fullPath;
+    let localPath: string | undefined;
 
+    // Handle Windows absolute paths (e.g., C:\path\to\folder)
+    const windowsPathRegex = /^[a-zA-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*$/;
+    if (windowsPathRegex.test(input)) {
+      type = 'local';
+      localPath = input;
+      repo = input.split('\\').pop() || 'local-repo';
+      owner = 'local';
+    }
+    // Handle Unix/Linux absolute paths (e.g., /path/to/folder)
+    else if (input.startsWith('/')) {
+      type = 'local';
+      localPath = input;
+      repo = input.split('/').filter(Boolean).pop() || 'local-repo';
+      owner = 'local';
+    }
     // Handle GitHub URL format
-    if (input.startsWith('https://github.com/')) {
+    else if (input.startsWith('https://github.com/')) {
       type = 'github';
       const parts = input.replace('https://github.com/', '').split('/');
       owner = parts[0] || '';
@@ -140,7 +156,7 @@ export default function Home() {
       return null;
     }
 
-    return { owner, repo, type, fullPath };
+    return { owner, repo, type, fullPath, localPath };
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -158,12 +174,12 @@ export default function Home() {
     const parsedRepo = parseRepositoryInput(repositoryInput);
 
     if (!parsedRepo) {
-      setError('Invalid repository format. Use "owner/repo", "https://github.com/owner/repo", "https://gitlab.com/owner/repo", or "https://bitbucket.org/owner/repo" format.');
+      setError('Invalid repository format. Use "owner/repo", GitHub/GitLab/BitBucket URL, or a local folder path like "/path/to/folder" or "C:\\path\\to\\folder".');
       setIsSubmitting(false);
       return;
     }
 
-    const { owner, repo, type } = parsedRepo;
+    const { owner, repo, type, localPath } = parsedRepo;
 
     // Store tokens in query params if they exist
     const params = new URLSearchParams();
@@ -176,8 +192,11 @@ export default function Home() {
         params.append('bitbucket_token', accessToken);
       }
     }
-    if (type !== 'github') {
-      params.append('type', type);
+    // Always include the type parameter
+    params.append('type', type);
+    // Add local path if it exists
+    if (localPath) {
+      params.append('local_path', encodeURIComponent(localPath));
     }
     // Add model parameters
     params.append('local_ollama', localOllama.toString());
@@ -219,7 +238,7 @@ export default function Home() {
                   type="text"
                   value={repositoryInput}
                   onChange={(e) => setRepositoryInput(e.target.value)}
-                  placeholder={t('form.repoPlaceholder')}
+                  placeholder={t('form.repoPlaceholder') || "owner/repo, GitHub/GitLab/BitBucket URL, or local folder path"}
                   className="input-japanese block w-full pl-10 pr-3 py-2.5 border-[var(--border-color)] rounded-lg bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
                 />
                 {error && (
