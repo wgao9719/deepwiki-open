@@ -9,23 +9,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import google.generativeai as genai
 
-# --- Application-level Logging Configuration ---
-# Create a logs directory if it doesn't exist
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE_PATH = os.path.join(LOG_DIR, "application.log")
-
-# Configure basic logging
-# You might want to make the log level configurable, e.g., from an environment variable
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - [LINE:%(lineno)d] - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE_PATH),
-        logging.StreamHandler()  # Also keep logging to console
-    ]
-)
-
 # Get a logger for this module
 logger = logging.getLogger(__name__)
 
