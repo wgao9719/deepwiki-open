@@ -89,6 +89,15 @@ const getCacheKey = (owner: string, repo: string, repoType: string, language: st
   return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}`;
 };
 
+// Helper function to get API base URL
+const getApiBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_SERVER_BASE_URL) {
+    return process.env.NEXT_PUBLIC_SERVER_BASE_URL;
+  }
+  // Default to localhost:8001 if not set, useful for local dev without a .env file
+  return 'http://localhost:8001';
+};
+
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   requestBody: Record<string, any>,
@@ -1049,13 +1058,19 @@ IMPORTANT:
   }, [wikiStructure, generatedPages, repoInfo, language]);
 
   // Function to refresh wiki and clear cache
-  const handleRefreshWiki = useCallback(() => {
-    // Clear the cache for this repository
-    const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
-    localStorage.removeItem(cacheKey);
+  const handleRefreshWiki = useCallback(async () => {
+    // Note: Clearing server-side cache is not implemented with a dedicated API endpoint in this iteration.
+    // Re-fetching and re-generating will overwrite the existing server cache.
+    // If explicit server cache deletion is needed, a DELETE /api/wiki_cache endpoint would be required.
+    console.log('Refreshing wiki. Server cache will be overwritten upon new generation.');
+    
+    // Clear the localStorage cache (if any remnants or if it was used before this change)
+    const localStorageCacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
+    localStorage.removeItem(localStorageCacheKey);
     
     // Reset cache loaded flag
     cacheLoadedSuccessfully.current = false;
+    effectRan.current = false; // Allow the main data loading useEffect to run again
     
     // Reset all state
     setWikiStructure(undefined);
@@ -1063,102 +1078,139 @@ IMPORTANT:
     setGeneratedPages({});
     setPagesInProgress(new Set());
     setError(null);
+    setIsLoading(true); // Set loading state for refresh
+    setLoadingMessage(messages.loading?.initializing || 'Initializing wiki generation...');
     
-    // Clear any in-progress requests
+    // Clear any in-progress requests for page content
     activeContentRequests.clear();
-    setStructureRequestInProgress(false);
-    setRequestInProgress(false);
+    // Reset flags related to request processing if they are component-wide
+    setStructureRequestInProgress(false); // Assuming this flag should be reset
+    setRequestInProgress(false); // Assuming this flag should be reset
     
-    // Start fresh fetch
-    fetchRepositoryStructure();
-  }, [fetchRepositoryStructure, repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+    // Explicitly trigger the data loading process again by re-invoking what the main useEffect does.
+    // This will first attempt to load from (now hopefully non-existent or soon-to-be-overwritten) server cache, 
+    // then proceed to fetchRepositoryStructure if needed.
+    // To ensure fetchRepositoryStructure is called if cache is somehow still there or to force a full refresh:
+    // One option is to directly call fetchRepositoryStructure() if force refresh means bypassing cache check.
+    // For now, we rely on the standard loadData flow initiated by resetting effectRan and dependencies.
+    // This will re-trigger the main data loading useEffect.
+    // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
+  }, [fetchRepositoryStructure, repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading?.initializing]);
 
   // Start wiki generation when component mounts
   useEffect(() => {
-
     if (effectRan.current === false) {
-      
-      // Try loading from cache first
-      const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
-      try {
-        const cachedData = localStorage.getItem(cacheKey);
-        
-        if (cachedData) {
-          const parsedData = JSON.parse(cachedData);
+      effectRan.current = true; // Set to true immediately to prevent re-entry due to StrictMode
+
+      const loadData = async () => {
+        // Try loading from server-side cache first
+        // const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language); // Not needed for API call path
+        setLoadingMessage(messages.loading?.fetchingCache || 'Checking for cached wiki...');
+        try {
+          const apiUrl = getApiBaseUrl();
+          const params = new URLSearchParams({
+            owner: repoInfo.owner,
+            repo: repoInfo.repo,
+            repo_type: repoInfo.type,
+            language: language,
+          });
+          const response = await fetch(`${apiUrl}/api/wiki_cache?${params.toString()}`);
           
-          // Verify the cache has the required structure and pages
-          if (parsedData.wikiStructure && 
-              parsedData.generatedPages && 
-              Object.keys(parsedData.generatedPages).length > 0) {
-            
-            console.log('Using cached wiki data');
-            setWikiStructure(parsedData.wikiStructure);
-            setGeneratedPages(parsedData.generatedPages);
-            setCurrentPageId(parsedData.wikiStructure.pages.length > 0 ? parsedData.wikiStructure.pages[0].id : undefined);
-            setIsLoading(false);
-            setLoadingMessage(undefined);
-            cacheLoadedSuccessfully.current = true;
-            effectRan.current = true;
-            return;
+          if (response.ok) {
+            const cachedData = await response.json(); // Returns null if no cache
+            if (cachedData && cachedData.wiki_structure && cachedData.generated_pages && Object.keys(cachedData.generated_pages).length > 0) {
+              console.log('Using server-cached wiki data');
+              setWikiStructure(cachedData.wiki_structure);
+              setGeneratedPages(cachedData.generated_pages);
+              setCurrentPageId(cachedData.wiki_structure.pages.length > 0 ? cachedData.wiki_structure.pages[0].id : undefined);
+              setIsLoading(false);
+              setLoadingMessage(undefined);
+              cacheLoadedSuccessfully.current = true;
+              return; // Exit if cache is successfully loaded
+            } else {
+              console.log('No valid wiki data in server cache or cache is empty.');
+            }
           } else {
-            // Invalid cache, clear it
-            console.log('Invalid cache data, clearing');
-            localStorage.removeItem(cacheKey);
+            // Log error but proceed to fetch structure, as cache is optional
+            console.error('Error fetching wiki cache from server:', response.status, await response.text());
+          }
+        } catch (error) {
+          console.error('Error loading from server cache:', error);
+          // Proceed to fetch structure if cache loading fails
+        }
+        
+        // If we reached here, either there was no cache, it was invalid, or an error occurred
+        // Proceed to fetch repository structure
+        fetchRepositoryStructure();
+      };
+
+      loadData();
+
+    } else {
+      console.log('Skipping duplicate repository fetch/cache check');
+    }
+
+    // Clean up function for this effect is not strictly necessary for loadData, 
+    // but keeping the main unmount cleanup in the other useEffect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure]); // Dependencies that trigger a reload
+
+  // Save wiki to server-side cache when generation is complete
+  useEffect(() => {
+    const saveCache = async () => {
+      if (!isLoading && 
+          !error && 
+          wikiStructure && 
+          Object.keys(generatedPages).length > 0 &&
+          Object.keys(generatedPages).length >= wikiStructure.pages.length &&
+          !cacheLoadedSuccessfully.current) {
+        
+        const allPagesHaveContent = wikiStructure.pages.every(page => 
+          generatedPages[page.id] && generatedPages[page.id].content && generatedPages[page.id].content !== 'Loading...');
+        
+        if (allPagesHaveContent) {
+          console.log('Attempting to save wiki data to server cache');
+          // const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language); // Not needed for API call
+          
+          try {
+            const dataToCache = {
+              owner: repoInfo.owner,
+              repo: repoInfo.repo,
+              repo_type: repoInfo.type,
+              language: language,
+              wiki_structure: wikiStructure,
+              generated_pages: generatedPages
+            };
+            const apiUrl = getApiBaseUrl();
+            const response = await fetch(`${apiUrl}/api/wiki_cache`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(dataToCache),
+            });
+
+            if (response.ok) {
+              console.log('Wiki data successfully saved to server cache');
+            } else {
+              console.error('Error saving wiki data to server cache:', response.status, await response.text());
+            }
+          } catch (error) {
+            console.error('Error saving to server cache:', error);
           }
         }
-      } catch (error) {
-        console.error('Error loading from cache:', error);
-        // Clear the cache if there was an error parsing
-        localStorage.removeItem(cacheKey);
       }
-      
-      // If we reached here, either there was no cache or it was invalid
-      fetchRepositoryStructure();
-      effectRan.current = true;
-    } else {
-      console.log('Skipping duplicate repository fetch');
-    }
-
-    // Clean up function
-    return () => {
-      console.log('Repository page unmounting');
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoInfo, fetchRepositoryStructure]);  // Only rerun if repo info changes
 
-  // Save wiki to cache when generation is complete
-  useEffect(() => {
-    // Only save when wiki generation is fully complete and successful
-    if (!isLoading && 
-        !error && 
-        wikiStructure && 
-        Object.keys(generatedPages).length > 0 &&
-        Object.keys(generatedPages).length >= wikiStructure.pages.length &&
-        !cacheLoadedSuccessfully.current) {
-      
-      // Check that all pages have content
-      const allPagesHaveContent = wikiStructure.pages.every(page => 
-        generatedPages[page.id] && generatedPages[page.id].content);
-      
-      if (allPagesHaveContent) {
-        console.log('Saving wiki data to cache');
-        const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
-        
-        try {
-          const dataToCache = {
-            wikiStructure,
-            generatedPages
-          };
-          
-          localStorage.setItem(cacheKey, JSON.stringify(dataToCache));
-        } catch (error) {
-          // Handle potential localStorage errors (quota exceeded, etc.)
-          console.error('Error saving to cache:', error);
-        }
-      }
-    }
+    saveCache();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, error, wikiStructure, generatedPages]);
+  }, [isLoading, error, wikiStructure, generatedPages, repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+
+  const handlePageSelect = (pageId: string) => {
+    if (currentPageId != pageId) {
+      setCurrentPageId(pageId)
+    }
+  };
 
   return (
     <div className="h-screen paper-texture p-4 md:p-8 flex flex-col">
@@ -1359,11 +1411,7 @@ IMPORTANT:
                           ? 'bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
                           : 'text-[var(--foreground)] hover:bg-[var(--background)] border border-transparent'
                         }`}
-                      onClick={() => {
-                        if (currentPageId != page.id) {
-                          setCurrentPageId(page.id)
-                        }
-                      }}
+                      onClick={() => handlePageSelect(page.id)}
                     >
                       <div className="flex items-center">
                         <div className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${
@@ -1422,7 +1470,7 @@ IMPORTANT:
                             <button
                               key={relatedId}
                               className="bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-xs text-[var(--accent-primary)] px-3 py-1.5 rounded-md transition-colors truncate max-w-full border border-[var(--accent-primary)]/20"
-                              onClick={() => setCurrentPageId(relatedId)}
+                              onClick={() => handlePageSelect(relatedId)}
                             >
                               {relatedPage.title}
                             </button>

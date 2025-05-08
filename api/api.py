@@ -40,6 +40,11 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Helper function to get adalflow root path
+def get_adalflow_default_root_path():
+    return os.path.expanduser(os.path.join("~", ".adalflow"))
+
+# --- Pydantic Models ---
 class WikiPage(BaseModel):
     """
     Model for a wiki page.
@@ -48,8 +53,35 @@ class WikiPage(BaseModel):
     title: str
     content: str
     filePaths: List[str]
-    importance: str
+    importance: str # Should ideally be Literal['high', 'medium', 'low']
     relatedPages: List[str]
+
+class WikiStructureModel(BaseModel):
+    """
+    Model for the overall wiki structure.
+    """
+    id: str
+    title: str
+    description: str
+    pages: List[WikiPage]
+
+class WikiCacheData(BaseModel):
+    """
+    Model for the data to be stored in the wiki cache.
+    """
+    wiki_structure: WikiStructureModel
+    generated_pages: Dict[str, WikiPage]
+
+class WikiCacheRequest(BaseModel):
+    """
+    Model for the request body when saving wiki cache.
+    """
+    owner: str
+    repo: str
+    repo_type: str
+    language: str
+    wiki_structure: WikiStructureModel
+    generated_pages: Dict[str, WikiPage]
 
 class WikiExportRequest(BaseModel):
     """
@@ -236,6 +268,79 @@ from api.simple_chat import chat_completions_stream
 # Add the chat_completions_stream endpoint to the main app
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
 
+# --- Wiki Cache Helper Functions ---
+
+WIKI_CACHE_DIR = os.path.join(get_adalflow_default_root_path(), "wikicache")
+os.makedirs(WIKI_CACHE_DIR, exist_ok=True)
+
+def get_wiki_cache_path(owner: str, repo: str, repo_type: str, language: str) -> str:
+    """Generates the file path for a given wiki cache."""
+    filename = f"deepwiki_cache_{repo_type}_{owner}_{repo}_{language}.json"
+    return os.path.join(WIKI_CACHE_DIR, filename)
+
+async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) -> Optional[WikiCacheData]:
+    """Reads wiki cache data from the file system."""
+    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return WikiCacheData(**data)
+        except Exception as e:
+            logger.error(f"Error reading wiki cache from {cache_path}: {e}")
+            return None
+    return None
+
+async def save_wiki_cache(data: WikiCacheRequest) -> bool:
+    """Saves wiki cache data to the file system."""
+    cache_path = get_wiki_cache_path(data.owner, data.repo, data.repo_type, data.language)
+    try:
+        payload = WikiCacheData(
+            wiki_structure=data.wiki_structure,
+            generated_pages=data.generated_pages
+        )
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(payload.model_dump(), f, indent=2)
+        logger.info(f"Wiki cache saved to {cache_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving wiki cache to {cache_path}: {e}")
+        return False
+
+# --- Wiki Cache API Endpoints ---
+
+@app.get("/api/wiki_cache", response_model=Optional[WikiCacheData])
+async def get_cached_wiki(
+    owner: str = Query(..., description="Repository owner"),
+    repo: str = Query(..., description="Repository name"),
+    repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
+    language: str = Query(..., description="Language of the wiki content")
+):
+    """
+    Retrieves cached wiki data (structure and generated pages) for a repository.
+    """
+    logger.info(f"Attempting to retrieve wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
+    cached_data = await read_wiki_cache(owner, repo, repo_type, language)
+    if cached_data:
+        return cached_data
+    else:
+        # Return 200 with null body if not found, as frontend expects this behavior
+        # Or, raise HTTPException(status_code=404, detail="Wiki cache not found") if preferred
+        logger.info(f"Wiki cache not found for {owner}/{repo} ({repo_type}), lang: {language}")
+        return None
+
+@app.post("/api/wiki_cache")
+async def store_wiki_cache(request_data: WikiCacheRequest):
+    """
+    Stores generated wiki data (structure and pages) to the server-side cache.
+    """
+    logger.info(f"Attempting to save wiki cache for {request_data.owner}/{request_data.repo} ({request_data.repo_type}), lang: {request_data.language}")
+    success = await save_wiki_cache(request_data)
+    if success:
+        return {"message": "Wiki cache saved successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save wiki cache")
+
 @app.get("/")
 async def root():
     """Root endpoint to check if the API is running"""
@@ -248,8 +353,10 @@ async def root():
             ],
             "Wiki": [
                 "POST /export/wiki - Export wiki content as Markdown or JSON",
+                "GET /api/wiki_cache - Retrieve cached wiki data",
+                "POST /api/wiki_cache - Store wiki data to cache"
             ],
-            "Repository": [
+            "LocalRepo": [
                 "GET /local_repo/structure - Get structure of a local repository (with path parameter)",
             ]
         }

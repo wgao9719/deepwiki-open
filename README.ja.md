@@ -44,6 +44,13 @@ echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 docker-compose up
 ```
 
+(上記のDockerコマンドおよび`docker-compose.yml`の設定では、ホスト上の`~/.adalflow`ディレクトリをコンテナ内の`/root/.adalflow`にマウントします。このパスは以下のものを保存するために使用されます：
+- クローンされたリポジトリ (`~/.adalflow/repos/`)
+- それらのエンベディングとインデックス (`~/.adalflow/databases/`)
+- 生成されたWikiのキャッシュ (`~/.adalflow/wikicache/`)
+
+これにより、コンテナが停止または削除されてもデータが永続化されます。)
+
 > 💡 **これらのキーの入手先:**
 > - Google APIキーは[Google AI Studio](https://makersuite.google.com/app/apikey)から取得
 > - OpenAI APIキーは[OpenAI Platform](https://platform.openai.com/api-keys)から取得

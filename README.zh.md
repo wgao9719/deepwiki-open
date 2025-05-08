@@ -44,6 +44,13 @@ echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 docker-compose up
 ```
 
+(上述 Docker 命令以及 `docker-compose.yml` 配置会挂载您主机上的 `~/.adalflow` 目录到容器内的 `/root/.adalflow`。此路径用于存储：
+- 克隆的仓库 (`~/.adalflow/repos/`)
+- 仓库的嵌入和索引 (`~/.adalflow/databases/`)
+- 缓存的已生成 Wiki 内容 (`~/.adalflow/wikicache/`)
+
+这确保了即使容器停止或移除，您的数据也能持久保存。)
+
 > 💡 **获取这些密钥的地方：**
 > - 从[Google AI Studio](https://makersuite.google.com/app/apikey)获取Google API密钥
 > - 从[OpenAI Platform](https://platform.openai.com/api-keys)获取OpenAI API密钥
