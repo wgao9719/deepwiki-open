@@ -2,32 +2,32 @@
 
 ![DeepWiki Banner](screenshots/Deepwiki.png)
 
-**DeepWiki** is my own implementation attempt of DeepWiki, automatically creates beautiful, interactive wikis for any GitHub, GitLab, or BitBucket repository! Just enter a repo name, and DeepWiki will:
+**Open DeepWiki** là 1 triển khai thay thế cho DeepWiki, tự động tạo ra các trang wiki cho bất kỳ Repository  nào trên GitHub, GitLab hoặc BitBucket! Chỉ cần nhập đường dẫn Repository, và DeepWiki sẽ:
 
-1. Analyze the code structure
-2. Generate comprehensive documentation
-3. Create visual diagrams to explain how everything works
-4. Organize it all into an easy-to-navigate wiki
+1. Phân tích cấu trúc mã nguồn
+2. Tạo tài liệu đầy đủ và chi tiết
+3. Tạo sơ đồ trực quan để giải thích cách mọi thứ hoạt động
+4. Sắp xếp tất cả documents thành một wiki dễ hiểu
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/sheing)
 
 [![Twitter/X](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://x.com/sashimikun_void)
 [![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/VQMBGR8u5v)
 
-## ✨ Features
+## ✨ Tính năng
 
-- **Instant Documentation**: Turn any GitHub, GitLab or BitBucket repo into a wiki in seconds
-- **Private Repository Support**: Securely access private repositories with personal access tokens
-- **Smart Analysis**: AI-powered understanding of code structure and relationships
-- **Beautiful Diagrams**: Automatic Mermaid diagrams to visualize architecture and data flow
-- **Easy Navigation**: Simple, intuitive interface to explore the wiki
-- **Ask Feature**: Chat with your repository using RAG-powered AI to get accurate answers
-- **DeepResearch**: Multi-turn research process that thoroughly investigates complex topics
-- **Multiple Model Providers**: Support for Google Gemini, OpenAI, OpenRouter, and local Ollama models
+- **Tạo Tài liệu tức thì**: Biến bất kỳ Repository GitHub, GitLab hoặc BitBucket nào thành wiki chỉ trong vài giây
+- **Hỗ trợ Private Repository**: Truy cập Private Repository một cách an toàn với personal access tokens
+- **Phân tích thông minh**: Hiểu cấu trúc và mối quan hệ của source codes nhờ AI
+- **Tự động tạo Sơ đồ**: Tự động tạo sơ đồ Mermaid để trực quan hóa kiến trúc và luồng dữ liệu
+- **Dễ dàng thao tác**:Giao diện wiki đơn giản, trực quan để khám phá
+- **Trò chuyện với repository**: Trò chuyện với repo của bạn bằng AI (tích hợp RAG) để nhận câu trả lời chính xác
+- **DeepResearch**:Quy trình Deep Research nhiều bước giúp phân tích kỹ lưỡng các chủ đề phức tạp
+- **Hỗ trợ nhiều mô hình**: Hỗ trợ Google Gemini, OpenAI, OpenRouter, và  local Ollama models
 
-## 🚀 Quick Start (Super Easy!)
+## 🚀 Bắt đầu (Siêu dễ :))
 
-### Option 1: Using Docker
+### Option 1: Sử dụng Docker
 
 ```bash
 # Clone the repository
@@ -44,15 +44,15 @@ echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 docker-compose up
 ```
 
-> 💡 **Where to get these keys:**
-> - Get a Google API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-> - Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+> 💡 **Hướng dẫn lấy Keys**
+> - Lấy Google API key từ [Google AI Studio](https://makersuite.google.com/app/apikey)
+> - Lấy OpenAI API key từ [OpenAI Platform](https://platform.openai.com/api-keys)
 
-### Option 2: Manual Setup (Recommended)
+### Option 2: Setup thủ công (Khuyên dùng)
 
-#### Step 1: Set Up Your API Keys
+#### Bước 1: Set Up API Keys
 
-Create a `.env` file in the project root with these keys:
+Tạo  `.env` file trong thư mục gốc của project với những keys vừa tạo:
 
 ```
 GOOGLE_API_KEY=your_google_api_key
@@ -61,7 +61,7 @@ OPENAI_API_KEY=your_openai_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
 ```
 
-#### Step 2: Start the Backend
+#### Bước 2: Bắt đầu với Backend
 
 ```bash
 # Install Python dependencies
@@ -71,7 +71,7 @@ pip install -r api/requirements.txt
 python -m api.main
 ```
 
-#### Step 3: Start the Frontend
+#### Bước 3: Bắt đầu với Frontend
 
 ```bash
 # Install JavaScript dependencies
@@ -85,24 +85,24 @@ npm run dev
 yarn dev
 ```
 
-#### Step 4: Use DeepWiki!
+#### Bước 4: Dùng DeepWiki!
 
-1. Open [http://localhost:3000](http://localhost:3000) in your browser
-2. Enter a GitHub, GitLab, or Bitbucket repository (like `https://github.com/openai/codex`, `https://github.com/microsoft/autogen`, `https://gitlab.com/gitlab-org/gitlab`, or `https://bitbucket.org/redradish/atlassian_app_versions`)
-3. For private repositories, click "+ Add access tokens" and enter your GitHub or GitLab personal access token
-4. Click "Generate Wiki" and watch the magic happen!
+1. Mở [http://localhost:3000](http://localhost:3000) trên trình duyệt
+2. Nhập đường dẫn GitHub, GitLab, hoặt Bitbucket repository (ví dụ như `https://github.com/openai/codex`, `https://github.com/microsoft/autogen`, `https://gitlab.com/gitlab-org/gitlab`, hay `https://bitbucket.org/redradish/atlassian_app_versions`)
+3. Cho private repositories, Nhấn "+ Add access tokens" và nhập your GitHub hoặt GitLab personal access token
+4. Click "Generate Wiki" và xem kết quả!
 
-## 🔍 How It Works
+## 🔍 Cách Open Deepwiki hoạt động
 
-DeepWiki uses AI to:
+DeepWiki dùng AI để:
 
-1. Clone and analyze the GitHub, GitLab, or Bitbucket repository (including private repos with token authentication)
-2. Create embeddings of the code for smart retrieval
-3. Generate documentation with context-aware AI (using Google Gemini, OpenAI, OpenRouter, or local Ollama models)
-4. Create visual diagrams to explain code relationships
-5. Organize everything into a structured wiki
-6. Enable intelligent Q&A with the repository through the Ask feature
-7. Provide in-depth research capabilities with DeepResearch
+1. Clone và phân tích GitHub, GitLab, hoặc Bitbucket repository (bao gồm private repos với token authentication)
+2. Tạo embeddings cho code (Rag support) 
+3. Tạo documentation với context-aware AI (dùng Google Gemini, OpenAI, OpenRouter, hay local Ollama models)
+4. Tạo diagrams để giải thích code relationships
+5. Organize thông tin thành 1 trang wiki
+6. Cho phép Q&A với repository 
+7. Cung cấp khả năng DeepResearch 
 
 ```mermaid
 graph TD
@@ -140,7 +140,7 @@ graph TD
     class H result;
 ```
 
-## 🛠️ Project Structure
+## 🛠️ Cấu trúc dự án
 
 ```
 deepwiki/
@@ -162,21 +162,21 @@ deepwiki/
 └── .env                  # Environment variables (create this)
 ```
 
-## 🛠️ Advanced Setup
+## 🛠️ Cài đặt nâng cao
 
-### Environment Variables
+### Biến môi trường
 
-| Variable | Description | Required | Note |
+| Biến môi trường | Mô tả | bắt buộc | ghi chú |
 |----------|-------------|----------|------|
-| `GOOGLE_API_KEY` | Google Gemini API key for AI generation | Yes |
-| `OPENAI_API_KEY` | OpenAI API key for embeddings | Yes |
-| `OPENROUTER_API_KEY` | OpenRouter API key for alternative models | No | Required only if you want to use OpenRouter models |
-| `PORT` | Port for the API server (default: 8001) | No | If you host API and frontend on the same machine, make sure change port of `NEXT_PUBLIC_SERVER_BASE_URL` accordingly |
-| `NEXT_PUBLIC_SERVER_BASE_URL` | Base URL for the API server (default: http://localhost:8001) | No |
+| `GOOGLE_API_KEY` | Google Gemini API key  | Có |
+| `OPENAI_API_KEY` | OpenAI API key   | có |
+| `OPENROUTER_API_KEY` | OpenRouter API key   | không| Yêu cầu nếu bạn muốn dùng OpenRouter models |
+| `PORT` | Port của API server (mặc định: 8001) | không | Nếu bạn muốn chạy API và frontend trên cùng 1 máy, hãy điều chỉnh Port `NEXT_PUBLIC_SERVER_BASE_URL` |
+| `NEXT_PUBLIC_SERVER_BASE_URL` | Đường dân mặt định của API server (mặc định: http://localhost:8001) | không |
 
-### Docker Setup
+### Cài Đặt với Docker 
 
-You can use Docker to run DeepWiki:
+Bạn có thể dùng Docker để run DeepWiki:
 
 ```bash
 # Pull the image from GitHub Container Registry
@@ -191,16 +191,16 @@ docker run -p 8001:8001 -p 3000:3000 \
   ghcr.io/asyncfuncai/deepwiki-open:latest
 ```
 
-Or use the provided `docker-compose.yml` file:
+Hoặc đơn giản hơn, sử dụng `docker-compose.yml` :
 
 ```bash
 # Edit the .env file with your API keys first
 docker-compose up
 ```
 
-#### Using a .env file with Docker
+#### Sử dụng  .env file với Docker
 
-You can also mount a .env file to the container:
+Bạn có thể "mount"  .env file vào container:
 
 ```bash
 # Create a .env file with your API keys
@@ -215,9 +215,8 @@ docker run -p 8001:8001 -p 3000:3000 \
   ghcr.io/asyncfuncai/deepwiki-open:latest
 ```
 
-#### Building the Docker image locally
+#### Bạn có thể Building the Docker image trên máy cục bộ 
 
-If you want to build the Docker image locally:
 
 ```bash
 # Clone the repository
@@ -235,112 +234,120 @@ docker run -p 8001:8001 -p 3000:3000 \
   deepwiki-open
 ```
 
-### API Server Details
+### Chi tiết API Server 
 
-The API server provides:
-- Repository cloning and indexing
+API server cung cấp:
+- Repository cloning và indexing
 - RAG (Retrieval Augmented Generation)
-- Streaming chat completions
+- Trò chuyện liên tục
 
-For more details, see the [API README](./api/README.md).
+Biết thêm chi tiết truy cập [ API README](./api/README.md).
 
-## 🔌 OpenRouter Integration
+## 🔌 Tích hợp OpenRouter
 
-DeepWiki now supports [OpenRouter](https://openrouter.ai/) as a model provider, giving you access to hundreds of AI models through a single API:
+DeepWiki hiện đã hỗ trợ [OpenRouter](https://openrouter.ai/) làm nhà cung cấp mô hình, cho phép bạn truy cập hàng trăm mô hình AI thông qua một API duy nhất:
 
-- **Multiple Model Options**: Access models from OpenAI, Anthropic, Google, Meta, Mistral, and more
-- **Simple Configuration**: Just add your OpenRouter API key and select the model you want to use
-- **Cost Efficiency**: Choose models that fit your budget and performance needs
-- **Easy Switching**: Toggle between different models without changing your code
+- **Nhiều tùy chọn mô hình**: Truy cập các mô hình từ OpenAI, Anthropic, Google, Meta, Mistral và nhiều nhà cung cấp khác  
+- **Cấu hình đơn giản**: Chỉ cần thêm khóa API của bạn từ OpenRouter và chọn mô hình bạn muốn sử dụng  
+- **Tiết kiệm chi phí**: Lựa chọn mô hình phù hợp với ngân sách và nhu cầu hiệu suất của bạn  
+- **Chuyển đổi dễ dàng**: Chuyển đổi giữa các mô hình khác nhau mà không cần thay đổi mã nguồn
 
-### How to Use OpenRouter with DeepWiki
 
-1. **Get an API Key**: Sign up at [OpenRouter](https://openrouter.ai/) and get your API key
-2. **Add to Environment**: Add `OPENROUTER_API_KEY=your_key` to your `.env` file
-3. **Enable in UI**: Check the "Use OpenRouter API" option on the homepage
-4. **Select Model**: Choose from popular models like GPT-4o, Claude 3.5 Sonnet, Gemini 2.0, and more
+### Cách sử dụng OpenRouter với DeepWiki
 
-OpenRouter is particularly useful if you want to:
-- Try different models without signing up for multiple services
-- Access models that might be restricted in your region
-- Compare performance across different model providers
-- Optimize for cost vs. performance based on your needs
+1. **Lấy API Key**: Đăng ký tại [OpenRouter](https://openrouter.ai/) và lấy khóa API 
+2. **Thêm vào biến môi trường**: Thêm `OPENROUTER_API_KEY=your_key` vào file `.env` 
+3. **Bật trong giao diện**: Chọn "Use OpenRouter API" trên trang chủ  
+4. **Chọn mô hình**: Lựa chọn từ các mô hình phổ biến như GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 và nhiều hơn nữa
 
-## 🤖 Ask & DeepResearch Features
 
-### Ask Feature
+OpenRouter đặc biệt hữu ích nếu bạn muốn:
 
-The Ask feature allows you to chat with your repository using Retrieval Augmented Generation (RAG):
+- Thử nhiều mô hình khác nhau mà không cần đăng ký nhiều dịch vụ  
+- Truy cập các mô hình có thể bị giới hạn tại khu vực của bạn  
+- So sánh hiệu năng giữa các nhà cung cấp mô hình khác nhau  
+- Tối ưu hóa chi phí so với hiệu suất dựa trên nhu cầu của bạn
 
-- **Context-Aware Responses**: Get accurate answers based on the actual code in your repository
-- **RAG-Powered**: The system retrieves relevant code snippets to provide grounded responses
-- **Real-Time Streaming**: See responses as they're generated for a more interactive experience
-- **Conversation History**: The system maintains context between questions for more coherent interactions
 
-### DeepResearch Feature
+## 🤖 Tính năng Hỏi & Nghiên cứu Sâu (DeepResearch)
 
-DeepResearch takes repository analysis to the next level with a multi-turn research process:
+### Tính năng Hỏi (Ask)
 
-- **In-Depth Investigation**: Thoroughly explores complex topics through multiple research iterations
-- **Structured Process**: Follows a clear research plan with updates and a comprehensive conclusion
-- **Automatic Continuation**: The AI automatically continues research until reaching a conclusion (up to 5 iterations)
-- **Research Stages**:
-  1. **Research Plan**: Outlines the approach and initial findings
-  2. **Research Updates**: Builds on previous iterations with new insights
-  3. **Final Conclusion**: Provides a comprehensive answer based on all iterations
+Tính năng Hỏi cho phép bạn trò chuyện với kho mã của mình bằng cách sử dụng kỹ thuật RAG (Retrieval Augmented Generation):
 
-To use DeepResearch, simply toggle the "Deep Research" switch in the Ask interface before submitting your question.
+- **Phản hồi theo ngữ cảnh**: Nhận câu trả lời chính xác dựa trên mã thực tế trong kho của bạn  
+- **Ứng dụng RAG**: Hệ thống truy xuất các đoạn mã liên quan để tạo ra câu trả lời có cơ sở  
+- **Phản hồi theo thời gian thực**: Xem câu trả lời được tạo ra trực tiếp, mang lại trải nghiệm tương tác hơn  
+- **Lưu lịch sử cuộc trò chuyện**: Hệ thống duy trì ngữ cảnh giữa các câu hỏi để cuộc đối thoại liền mạch hơn
 
-## 📱 Screenshots
 
-![DeepWiki Main Interface](screenshots/Interface.png)
-*The main interface of DeepWiki*
+### Tính năng DeepResearch
 
-![Private Repository Support](screenshots/privaterepo.png)
-*Access private repositories with personal access tokens*
+DeepResearch nâng tầm phân tích kho mã với quy trình nghiên cứu nhiều vòng:
 
-![DeepResearch Feature](screenshots/DeepResearch.png)
-*DeepResearch conducts multi-turn investigations for complex topics*
+- **Ngieen cứu chuyên sâu**: Khám phá kỹ lưỡng các chủ đề phức tạp thông qua nhiều vòng nghiên cứu  
+- **Quy trình có cấu trúc**: Tuân theo kế hoạch nghiên cứu rõ ràng với các bản cập nhật và kết luận tổng thể  
+- **Tự động tiếp tục**: AI sẽ tự động tiếp tục quá trình nghiên cứu cho đến khi đưa ra kết luận (tối đa 5 vòng)  
+- **Các giai đoạn nghiên cứu**:  
+  1. **Kế hoạch nghiên cứu**: Phác thảo phương pháp và những phát hiện ban đầu  
+  2. **Cập nhật nghiên cứu**: Bổ sung kiến thức mới qua từng vòng lặp  
+  3. **Kết luận cuối cùng**: Đưa ra câu trả lời toàn diện dựa trên tất cả các vòng nghiên cứu
+
+Để sử dụng DeepResearch, chỉ cần bật công tắc "Deep Research" trong giao diện Hỏi (Ask) trước khi gửi câu hỏi của bạn.
+
+
+## 📱 Ảnh chụp màng hình
+
+![Giao diện chính của DeepWiki](screenshots/Interface.png)  
+*Giao diện chính của DeepWiki*
+
+![Hỗ trợ kho riêng tư](screenshots/privaterepo.png)  
+*Truy cập kho riêng tư bằng Personal Access Token*
+
+![Tính năng DeepResearch](screenshots/DeepResearch.png)  
+*DeepResearch thực hiện nghiên cứu nhiều vòng cho các chủ đề phức tạp*
 
 ### Demo Video
 
 [![DeepWiki Demo Video](https://img.youtube.com/vi/zGANs8US8B4/0.jpg)](https://youtu.be/zGANs8US8B4)
 
-*Watch DeepWiki in action!*
 
-## ❓ Troubleshooting
 
-### API Key Issues
-- **"Missing environment variables"**: Make sure your `.env` file is in the project root and contains the required API keys
-- **"API key not valid"**: Check that you've copied the full key correctly with no extra spaces
-- **"OpenRouter API error"**: Verify your OpenRouter API key is valid and has sufficient credits
+## ❓ Khắc phục sự cố
 
-### Connection Problems
-- **"Cannot connect to API server"**: Make sure the API server is running on port 8001
-- **"CORS error"**: The API is configured to allow all origins, but if you're having issues, try running both frontend and backend on the same machine
+### Vấn đề với API Key
+- **"Thiếu biến môi trường"**: Đảm bảo rằng file `.env` của bạn nằm ở thư mục gốc của dự án và chứa các API key cần thiết  
+- **"API key không hợp lệ"**: Kiểm tra lại xem bạn đã sao chép đầy đủ API key mà không có khoảng trắng thừa chưa  
+- **"Lỗi API OpenRouter"**: Xác minh rằng API key của OpenRouter là hợp lệ và có đủ tín dụng
 
-### Generation Issues
-- **"Error generating wiki"**: For very large repositories, try a smaller one first
-- **"Invalid repository format"**: Make sure you're using a valid GitHub, GitLab or Bitbucket URL format
-- **"Could not fetch repository structure"**: For private repositories, ensure you've entered a valid personal access token with appropriate permissions
-- **"Diagram rendering error"**: The app will automatically try to fix broken diagrams
+### Vấn đề kết nối
+- **"Không thể kết nối với máy chủ API"**: Đảm bảo máy chủ API đang chạy trên cổng 8001  
+- **"Lỗi CORS"**: API được cấu hình để cho phép tất cả các nguồn gốc, nhưng nếu gặp sự cố, thử chạy cả frontend và backend trên cùng một máy tính
 
-### Common Solutions
-1. **Restart both servers**: Sometimes a simple restart fixes most issues
-2. **Check console logs**: Open browser developer tools to see any JavaScript errors
-3. **Check API logs**: Look at the terminal where the API is running for Python errors
+### Vấn đề khi tạo nội dung
+- **"Lỗi khi tạo wiki"**: Với các kho mã rất lớn, hãy thử trước với kho mã nhỏ hơn  
+- **"Định dạng kho mã không hợp lệ"**: Đảm bảo bạn đang sử dụng định dạng URL hợp lệ cho GitHub, GitLab hoặc Bitbucket  
+- **"Không thể lấy cấu trúc kho mã"**: Với các kho mã riêng tư, hãy đảm bảo bạn đã nhập token truy cập cá nhân hợp lệ và có quyền truy cập phù hợp  
+- **"Lỗi khi render sơ đồ"**: Ứng dụng sẽ tự động thử khắc phục các sơ đồ bị lỗi
 
-## 🤝 Contributing
+### Các giải pháp phổ biến
+1. **Khởi động lại cả hai máy chủ**: Đôi khi, một lần khởi động lại đơn giản có thể giải quyết hầu hết các vấn đề  
+2. **Kiểm tra nhật ký trình duyệt**: Mở công cụ phát triển của trình duyệt để xem các lỗi JavaScript  
+3. **Kiểm tra nhật ký API**: Xem các lỗi Python trong terminal nơi API đang chạy
 
-Contributions are welcome! Feel free to:
-- Open issues for bugs or feature requests
-- Submit pull requests to improve the code
-- Share your feedback and ideas
 
-## 📄 License
+## 🤝 Đóng góp
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Chúng tôi hoan nghênh mọi đóng góp! Bạn có thể:
+- Mở các vấn đề (issues) để báo lỗi hoặc yêu cầu tính năng  
+- Gửi pull request để cải thiện mã nguồn  
+- Chia sẻ phản hồi và ý tưởng của bạn
 
-## ⭐ Star History
+## 📄 Giấy phép
 
-[![Star History Chart](https://api.star-history.com/svg?repos=AsyncFuncAI/deepwiki-open&type=Date)](https://star-history.com/#AsyncFuncAI/deepwiki-open&Date)
+Dự án này được cấp phép theo Giấy phép MIT - xem file [LICENSE](LICENSE) để biết chi tiết.
+
+## ⭐ Lịch sử
+
+[![Biểu đồ lịch sử](https://api.star-history.com/svg?repos=AsyncFuncAI/deepwiki-open&type=Date)](https://star-history.com/#AsyncFuncAI/deepwiki-open&Date)
+
