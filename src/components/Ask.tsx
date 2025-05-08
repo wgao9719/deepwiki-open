@@ -444,6 +444,8 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
 
       // Read the stream
       let fullResponse = '';
+      setHasResponse(true);
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -554,7 +556,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
 
         {/* Response area */}
         {response && (
-          <div className="border-t border-gray-200 dark:border-gray-700">
+          <div className="border-t border-gray-200 dark:border-gray-700 mt-4">
             <div
               ref={responseRef}
               className="p-4 max-h-[500px] overflow-y-auto"

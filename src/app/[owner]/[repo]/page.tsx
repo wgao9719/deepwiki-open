@@ -3,7 +3,7 @@
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown } from 'react-icons/fa';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
 import Markdown from '@/components/Markdown';
@@ -220,6 +220,9 @@ export default function RepoWikiPage() {
 
   // Create a flag to ensure the effect only runs once
   const effectRan = React.useRef(false);
+
+  // State for Ask section visibility
+  const [isAskSectionVisible, setIsAskSectionVisible] = useState(true);
 
   // Memoize repo info to avoid triggering updates in callbacks
 
@@ -1500,22 +1503,31 @@ IMPORTANT:
         {/* Only show Ask component when wiki is successfully generated */}
         {wikiStructure && Object.keys(generatedPages).length > 0 && !isLoading && (
           <div className="w-full bg-[var(--card-bg)] rounded-lg p-5 mb-4 shadow-custom card-japanese">
-            <div className="text-center mb-3 text-sm font-serif text-[var(--foreground)]">
-              {messages.repoPage?.askAboutRepo || 'Ask questions about this repository'}
-            </div>
-            <Ask
-              repoUrl={repoInfo.owner && repoInfo.repo
-                ? getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type, repoInfo.localPath)
-                : "https://github.com/AsyncFuncAI/deepwiki-open"
-              }
-              githubToken={githubToken}
-              gitlabToken={gitlabToken}
-              bitbucketToken={bitbucketToken}
-              localOllama={localOllama}
-              useOpenRouter={useOpenRouter}
-              openRouterModel={openRouterModel}
-              language={language}
-            />
+            <button
+              onClick={() => setIsAskSectionVisible(!isAskSectionVisible)}
+              className="w-full flex items-center justify-between text-left mb-3 text-sm font-serif text-[var(--foreground)] hover:text-[var(--accent-primary)] transition-colors"
+              aria-expanded={isAskSectionVisible}
+            >
+              <span>
+                {messages.repoPage?.askAboutRepo || 'Ask questions about this repository'}
+              </span>
+              {isAskSectionVisible ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
+            {isAskSectionVisible && (
+              <Ask
+                repoUrl={repoInfo.owner && repoInfo.repo
+                  ? getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type, repoInfo.localPath)
+                  : "https://github.com/AsyncFuncAI/deepwiki-open"
+                }
+                githubToken={githubToken}
+                gitlabToken={gitlabToken}
+                bitbucketToken={bitbucketToken}
+                localOllama={localOllama}
+                useOpenRouter={useOpenRouter}
+                openRouterModel={openRouterModel}
+                language={language}
+              />
+            )}
           </div>
         )}
         <div className="flex justify-between items-center gap-4 text-center text-[var(--muted)] text-sm h-fit w-full bg-[var(--card-bg)] rounded-lg p-3 shadow-sm border border-[var(--border-color)]">
