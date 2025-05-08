@@ -9,11 +9,24 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import google.generativeai as genai
 
-# Configure logging
+# --- Application-level Logging Configuration ---
+# Create a logs directory if it doesn't exist
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE_PATH = os.path.join(LOG_DIR, "application.log")
+
+# Configure basic logging
+# You might want to make the log level configurable, e.g., from an environment variable
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - [LINE:%(lineno)d] - %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE_PATH),
+        logging.StreamHandler()  # Also keep logging to console
+    ]
 )
+
+# Get a logger for this module
 logger = logging.getLogger(__name__)
 
 # Get API keys from environment variables
@@ -294,17 +307,31 @@ async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) 
 async def save_wiki_cache(data: WikiCacheRequest) -> bool:
     """Saves wiki cache data to the file system."""
     cache_path = get_wiki_cache_path(data.owner, data.repo, data.repo_type, data.language)
+    logger.info(f"Attempting to save wiki cache. Path: {cache_path}")
     try:
         payload = WikiCacheData(
             wiki_structure=data.wiki_structure,
             generated_pages=data.generated_pages
         )
+        # Log size of data to be cached for debugging (avoid logging full content if large)
+        try:
+            payload_json = payload.model_dump_json()
+            payload_size = len(payload_json.encode('utf-8'))
+            logger.info(f"Payload prepared for caching. Size: {payload_size} bytes.")
+        except Exception as ser_e:
+            logger.warning(f"Could not serialize payload for size logging: {ser_e}")
+
+
+        logger.info(f"Writing cache file to: {cache_path}")
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump(payload.model_dump(), f, indent=2)
-        logger.info(f"Wiki cache saved to {cache_path}")
+        logger.info(f"Wiki cache successfully saved to {cache_path}")
         return True
+    except IOError as e:
+        logger.error(f"IOError saving wiki cache to {cache_path}: {e.strerror} (errno: {e.errno})", exc_info=True)
+        return False
     except Exception as e:
-        logger.error(f"Error saving wiki cache to {cache_path}: {e}")
+        logger.error(f"Unexpected error saving wiki cache to {cache_path}: {e}", exc_info=True)
         return False
 
 # --- Wiki Cache API Endpoints ---
