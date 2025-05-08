@@ -17,7 +17,7 @@
     "preparingDownload": "Đang tải!! Vui lòng chờ ..."
 },
   "home": {
-    "welcome": "Chào mừng đến với DeepWiki-Open",
+    "welcome": "Chào mừng đến với DeepWiki-Open (Open source version",
     "welcomeTagline": "Tài liệu hỗ trợ bởi AI cho các repositoty của bạn",
     "description": "Tạo tài liệu từ các repository GitHub, GitLab, hoặc Bitbucket chỉ với vài cú nhấp chuột.",
     "quickStart": "Bắt đầu nhanh",
