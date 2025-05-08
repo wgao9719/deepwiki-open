@@ -249,7 +249,6 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Be concise but thorough
 - Use markdown formatting to improve readability
 - Cite specific files and code sections when relevant
-- Structure your response logically
 </style>"""
             elif is_final_iteration:
                 system_prompt = f"""<role>
@@ -443,11 +442,11 @@ This file contains...
         else:
             # Initialize Google Generative AI model
             model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash",
+                model_name=configs["generator"]["model_kwargs"]["model"],
                 generation_config={
-                    "temperature": 0.7,
-                    "top_p": 0.8,
-                    "top_k": 40
+                    "temperature": configs["generator"]["model_kwargs"]["temperature"],
+                    "top_p": configs["generator"]["model_kwargs"]["top_p"],
+                    "top_k": configs["generator"]["model_kwargs"]["top_k"]
                 }
             )
 

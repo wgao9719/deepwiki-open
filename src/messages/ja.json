@@ -55,5 +55,20 @@
     "viewPlan": "計画を見る",
     "viewUpdates": "更新を見る",
     "viewConclusion": "結論を見る"
+  },
+  "repoPage": {
+    "refreshWiki": "Wikiを更新",
+    "home": "ホーム",
+    "errorTitle": "エラー",
+    "errorMessageDefault": "リポジトリが存在し、公開されていることを確認してください。有効な形式は「owner/repo」、「https://github.com/owner/repo」、「https://gitlab.com/owner/repo」、「https://bitbucket.org/owner/repo」、またはローカルフォルダパス（例: 「C:\\\\path\\\\to\\\\folder」、「/path/to/folder」）です。",
+    "backToHome": "ホームに戻る",
+    "exportWiki": "Wikiをエクスポート",
+    "exportAsMarkdown": "Markdownとしてエクスポート",
+    "exportAsJson": "JSONとしてエクスポート",
+    "pages": "ページ",
+    "relatedFiles": "関連ファイル:",
+    "relatedPages": "関連ページ:",
+    "selectPagePrompt": "ナビゲーションからページを選択してコンテンツを表示",
+    "askAboutRepo": "このリポジトリについて質問する"
   }
 }
