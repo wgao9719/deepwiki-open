@@ -1011,7 +1011,7 @@ IMPORTANT:
       const repoUrl = getRepoUrl(repoInfo.owner, repoInfo.repo, repoInfo.type, repoInfo.localPath);
 
       // Make API call to export wiki
-      const response = await fetch(`${SERVER_BASE_URL}/export/wiki`, {
+      const response = await fetch(`/export/wiki`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

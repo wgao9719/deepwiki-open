@@ -240,7 +240,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
       }
 
       // Make the API call
-      const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
+      const apiResponse = await fetch(`/api/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -422,7 +422,7 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
         requestBody.bitbucket_token = bitbucketToken;
       }
 
-      const apiResponse = await fetch(`${SERVER_BASE_URL}/chat/completions/stream`, {
+      const apiResponse = await fetch(`/api/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
