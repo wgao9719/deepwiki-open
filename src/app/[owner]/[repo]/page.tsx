@@ -1117,7 +1117,7 @@ IMPORTANT:
             repo_type: repoInfo.type,
             language: language,
           });
-          const response = await fetch(`${apiUrl}/api/wiki_cache?${params.toString()}`);
+          const response = await fetch(`/api/wiki_cache?${params.toString()}`);
           
           if (response.ok) {
             const cachedData = await response.json(); // Returns null if no cache
@@ -1185,7 +1185,7 @@ IMPORTANT:
               generated_pages: generatedPages
             };
             const apiUrl = getApiBaseUrl();
-            const response = await fetch(`${apiUrl}/api/wiki_cache`, {
+            const response = await fetch(`/api/wiki_cache`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
