@@ -313,7 +313,7 @@ IMPORTANT FORMATTING RULES:
 
         Args:
             query: The user's query
-            language: Language code for response (e.g., 'en', 'ja', 'zh', 'es')
+            language: Language code for response (e.g., 'en', 'ja', 'zh', 'es' ,'kr')
 
         Returns:
             Tuple of (RAGAnswer, retrieved_documents)
@@ -332,7 +332,8 @@ IMPORTANT FORMATTING RULES:
                 "en": "English",
                 "ja": "Japanese (日本語)",
                 "zh": "Mandarin Chinese (中文)",
-                "es": "Spanish (Español)"
+                "es": "Spanish (Español)",
+                "kr": "Korean (한국어)"
             }.get(language, "English")
 
             # Prepare generation parameters

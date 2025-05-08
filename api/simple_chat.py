@@ -63,7 +63,7 @@ class ChatCompletionRequest(BaseModel):
     use_openrouter: Optional[bool] = Field(False, description="Use OpenRouter API for generation")
     openrouter_model: Optional[str] = Field("openai/gpt-4o", description="OpenRouter model to use (e.g., 'openai/gpt-4o', 'anthropic/claude-3-opus')")
     bitbucket_token: Optional[str] = Field(None, description="Bitbucket personal access token for private repositories")
-    language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es')")
+    language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es', 'kr')")
 
 @app.post("/chat/completions/stream")
 async def chat_completions_stream(request: ChatCompletionRequest):
@@ -208,7 +208,8 @@ async def chat_completions_stream(request: ChatCompletionRequest):
             "en": "English",
             "ja": "Japanese (日本語)",
             "zh": "Mandarin Chinese (中文)",
-            "es": "Spanish (Español)"
+            "es": "Spanish (Español)",
+            "kr": "Korean (한국어)"
         }.get(language_code, "English")
 
         # Create system prompt

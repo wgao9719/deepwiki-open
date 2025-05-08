@@ -272,7 +272,8 @@ ${filePaths.map(path => `- ${path}`).join('\n')}
 IMPORTANT: Generate the content in ${language === 'en' ? 'English' :
             language === 'ja' ? 'Japanese (日本語)' :
             language === 'zh' ? 'Mandarin Chinese (中文)' :
-            language === 'es' ? 'Spanish (Español)' : 'English'} language.
+            language === 'es' ? 'Spanish (Español)' : 
+            language === 'kr' ? 'Korean (한국어)' : 'English'} language.
 
 Include:
 - Clear introduction explaining what "${page.title}" is
@@ -454,7 +455,8 @@ I want to create a wiki for this repository. Determine the most logical structur
 IMPORTANT: The wiki content will be generated in ${language === 'en' ? 'English' :
             language === 'ja' ? 'Japanese (日本語)' :
             language === 'zh' ? 'Mandarin Chinese (中文)' :
-            language === 'es' ? 'Spanish (Español)' : 'English'} language.
+            language === 'es' ? 'Spanish (Español)' : 
+            language === 'kr' ? 'Korean (한국어)' : 'English'} language.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
 - Architecture overviews
