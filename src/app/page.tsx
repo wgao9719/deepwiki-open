@@ -273,6 +273,7 @@ export default function Home() {
                   <option value="ja">Japanese (日本語)</option>
                   <option value="zh">Mandarin (中文)</option>
                   <option value="es">Spanish (Español)</option>
+                  <option value="kr">Korean (한국어)</option>
                 </select>
               </div>
 
