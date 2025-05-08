@@ -30,17 +30,17 @@
 ### Option 1: Sử dụng Docker
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/AsyncFuncAI/deepwiki-open.git
 cd deepwiki-open
 
-# Create a .env file with your API keys
+# Tạo .env file với API keys
 echo "GOOGLE_API_KEY=your_google_api_key" > .env
 echo "OPENAI_API_KEY=your_openai_api_key" >> .env
-# Optional: Add OpenRouter API key if you want to use OpenRouter models
+# Optional: Thêm OpenRouter API key nếu bạn muốn OpenRouter models
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
-# Run with Docker Compose
+# Run với Docker Compose
 docker-compose up
 ```
 
@@ -57,31 +57,31 @@ Tạo  `.env` file trong thư mục gốc của project với những keys vừa
 ```
 GOOGLE_API_KEY=your_google_api_key
 OPENAI_API_KEY=your_openai_api_key
-# Optional: Add this if you want to use OpenRouter models
+# Optional: Thêm OpenRouter API key nếu bạn muốn OpenRouter models
 OPENROUTER_API_KEY=your_openrouter_api_key
 ```
 
 #### Bước 2: Bắt đầu với Backend
 
 ```bash
-# Install Python dependencies
+# Cài đặt Python dependencies
 pip install -r api/requirements.txt
 
-# Start the API server
+# Chạy API server
 python -m api.main
 ```
 
 #### Bước 3: Bắt đầu với Frontend
 
 ```bash
-# Install JavaScript dependencies
+# Cài đặt JavaScript dependencies
 npm install
-# or
+# Hoặc
 yarn install
 
-# Start the web app
+# Chạy the web app
 npm run dev
-# or
+# Hoặc
 yarn dev
 ```
 
@@ -145,9 +145,9 @@ graph TD
 ```
 deepwiki/
 ├── api/                  # Backend API server
-│   ├── main.py           # API entry point
-│   ├── api.py            # FastAPI implementation
-│   ├── rag.py            # Retrieval Augmented Generation
+│   ├── main.py           # API 
+│   ├── api.py            # FastAPI 
+│   ├── rag.py            # Retrieval Augmented Generation (RAG)
 │   ├── data_pipeline.py  # Data processing utilities
 │   └── requirements.txt  # Python dependencies
 │
@@ -172,17 +172,17 @@ deepwiki/
 | `OPENAI_API_KEY` | OpenAI API key   | có |
 | `OPENROUTER_API_KEY` | OpenRouter API key   | không| Yêu cầu nếu bạn muốn dùng OpenRouter models |
 | `PORT` | Port của API server (mặc định: 8001) | không | Nếu bạn muốn chạy API và frontend trên cùng 1 máy, hãy điều chỉnh Port `NEXT_PUBLIC_SERVER_BASE_URL` |
-| `NEXT_PUBLIC_SERVER_BASE_URL` | Đường dân mặt định của API server (mặc định: http://localhost:8001) | không |
+| `NEXT_PUBLIC_SERVER_BASE_URL` | Đường dẫnn mặt định của API server (mặc định: http://localhost:8001) | không |
 
 ### Cài Đặt với Docker 
 
 Bạn có thể dùng Docker để run DeepWiki:
 
 ```bash
-# Pull the image from GitHub Container Registry
+# Pull Docker image từ GitHub Container Registry
 docker pull ghcr.io/asyncfuncai/deepwiki-open:latest
 
-# Run the container with environment variables
+# Chạy container với biến môi trường
 docker run -p 8001:8001 -p 3000:3000 \
   -e GOOGLE_API_KEY=your_google_api_key \
   -e OPENAI_API_KEY=your_openai_api_key \
@@ -203,12 +203,12 @@ docker-compose up
 Bạn có thể "mount"  .env file vào container:
 
 ```bash
-# Create a .env file with your API keys
+# Tạo .env file với your API keys
 echo "GOOGLE_API_KEY=your_google_api_key" > .env
 echo "OPENAI_API_KEY=your_openai_api_key" >> .env
 echo "OPENROUTER_API_KEY=your_openrouter_api_key" >> .env
 
-# Run the container with the .env file mounted
+# Run container với .env file 
 docker run -p 8001:8001 -p 3000:3000 \
   -v $(pwd)/.env:/app/.env \
   -v ~/.adalflow:/root/.adalflow \
@@ -219,14 +219,14 @@ docker run -p 8001:8001 -p 3000:3000 \
 
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/AsyncFuncAI/deepwiki-open.git
 cd deepwiki-open
 
-# Build the Docker image
+# Build Docker image
 docker build -t deepwiki-open .
 
-# Run the container
+# Chạy container
 docker run -p 8001:8001 -p 3000:3000 \
   -e GOOGLE_API_KEY=your_google_api_key \
   -e OPENAI_API_KEY=your_openai_api_key \
