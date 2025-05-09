@@ -27,8 +27,6 @@ interface WikiStructure {
   pages: WikiPage[];
 }
 
-const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
-
 // Add CSS styles for wiki with Japanese aesthetic
 const wikiStyles = `
   .prose code {
@@ -724,7 +722,7 @@ IMPORTANT:
 
       if (repoInfo.type === 'local' && repoInfo.localPath) {
         try {
-          const response = await fetch(`${SERVER_BASE_URL}/local_repo/structure?path=${encodeURIComponent(repoInfo.localPath)}`);
+          const response = await fetch(`/local_repo/structure?path=${encodeURIComponent(repoInfo.localPath)}`);
 
           if (!response.ok) {
             const errorData = await response.text();
