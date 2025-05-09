@@ -417,8 +417,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         setLoadingMessage(undefined); // Clear specific loading message
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generatedPages, githubToken, gitlabToken, bitbucketToken, repoInfo.type, localOllama, useOpenRouter, openRouterModel, language, activeContentRequests]);
+  }, [generatedPages, githubToken, gitlabToken, bitbucketToken, repoInfo.type, repoInfo.localPath, localOllama, useOpenRouter, openRouterModel, language, activeContentRequests]);
 
   // Determine the wiki structure from repository data
   const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
@@ -692,7 +691,7 @@ IMPORTANT:
     } finally {
       setStructureRequestInProgress(false);
     }
-  }, [generatePageContent, githubToken, gitlabToken, bitbucketToken, repoInfo.type, pagesInProgress.size, structureRequestInProgress, localOllama, useOpenRouter, openRouterModel, language, messages.loading]);
+  }, [generatePageContent, githubToken, gitlabToken, bitbucketToken, repoInfo.type, repoInfo.localPath, pagesInProgress.size, structureRequestInProgress, localOllama, useOpenRouter, openRouterModel, language, messages.loading]);
 
   // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
@@ -974,7 +973,7 @@ IMPORTANT:
       // Reset the request in progress flag
       setRequestInProgress(false);
     }
-  }, [owner, repo, determineWikiStructure, githubToken, gitlabToken, bitbucketToken, repoInfo.type, requestInProgress, messages.loading]);
+  }, [owner, repo, determineWikiStructure, githubToken, gitlabToken, bitbucketToken, repoInfo.type, repoInfo.localPath, requestInProgress, messages.loading]);
 
   // Function to export wiki content
   const exportWiki = useCallback(async (format: 'markdown' | 'json') => {
@@ -1049,7 +1048,7 @@ IMPORTANT:
       setIsExporting(false);
       setLoadingMessage(undefined);
     }
-  }, [wikiStructure, generatedPages, repoInfo, language]);
+  }, [wikiStructure, generatedPages, repoInfo, repoInfo.localPath, language]);
 
   // Function to refresh wiki and clear cache
   const handleRefreshWiki = useCallback(async () => {
@@ -1117,7 +1116,6 @@ IMPORTANT:
     // For now, we rely on the standard loadData flow initiated by resetting effectRan and dependencies.
     // This will re-trigger the main data loading useEffect.
     // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading, activeContentRequests]);
 
   // Start wiki generation when component mounts
@@ -1173,7 +1171,6 @@ IMPORTANT:
 
     // Clean up function for this effect is not strictly necessary for loadData, 
     // but keeping the main unmount cleanup in the other useEffect
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure]); // Dependencies that trigger a reload
 
   // Save wiki to server-side cache when generation is complete
@@ -1222,7 +1219,6 @@ IMPORTANT:
     };
 
     saveCache();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, error, wikiStructure, generatedPages, repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
 
   const handlePageSelect = (pageId: string) => {

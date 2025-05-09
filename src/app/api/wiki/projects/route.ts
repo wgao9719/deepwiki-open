@@ -31,8 +31,9 @@ export async function GET() {
       let errorBody = { error: `Failed to fetch from Python backend: ${response.statusText}` };
       try {
         errorBody = await response.json();
-      } catch (e) {
-        // Ignore if response is not JSON
+      } catch {
+        // If parsing JSON fails, errorBody will retain its default value
+        // The error from backend is logged in the next line anyway
       }
       console.error(`Error from Python backend (${PROJECTS_API_ENDPOINT}): ${response.status} - ${JSON.stringify(errorBody)}`);
       return NextResponse.json(errorBody, { status: response.status });
@@ -41,10 +42,11 @@ export async function GET() {
     const projects: ApiProcessedProject[] = await response.json();
     return NextResponse.json(projects);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Network or other error when fetching from ${PROJECTS_API_ENDPOINT}:`, error);
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json(
-      { error: `Failed to connect to the Python backend. ${error.message}` },
+      { error: `Failed to connect to the Python backend. ${message}` },
       { status: 503 } // Service Unavailable
     );
   }

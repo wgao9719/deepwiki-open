@@ -33,9 +33,10 @@ export default function WikiProjectsPage() {
             throw new Error(data.error);
         }
         setProjects(data as ProcessedProject[]);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("Failed to load projects from API:", e);
-        setError(e.message || "An unknown error occurred.");
+        const message = e instanceof Error ? e.message : "An unknown error occurred.";
+        setError(message);
         setProjects([]);
       } finally {
         setIsLoading(false);
