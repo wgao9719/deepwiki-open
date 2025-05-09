@@ -10,7 +10,7 @@ configs = {
         "batch_size": 500,
         "model_client": OpenAIClient,
         "model_kwargs": {
-            "model": "text-embedding-3-large",
+            "model": "text-embedding-3-small",
             "dimensions": 256,
             "encoding_format": "float",
         },
@@ -21,9 +21,10 @@ configs = {
     "generator": {
         "model_client": GoogleGenAIClient,
         "model_kwargs": {
-            "model": "gemini-2.5-flash-preview-04-17",
+            "model": "gemini-2.0-flash",
             "temperature": 0.7,
             "top_p": 0.8,
+            "top_k": 40
         },
     },
     # "generator": {
