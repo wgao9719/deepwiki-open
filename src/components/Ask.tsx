@@ -29,7 +29,6 @@ interface AskProps {
 }
 
 
-const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
 
 const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false, useOpenRouter = false, openRouterModel = 'openai/gpt-4o', language = 'en' }) => {
   const [question, setQuestion] = useState('');

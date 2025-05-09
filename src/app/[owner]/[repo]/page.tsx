@@ -89,15 +89,6 @@ const getCacheKey = (owner: string, repo: string, repoType: string, language: st
   return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}`;
 };
 
-// Helper function to get API base URL
-const getApiBaseUrl = () => {
-  if (process.env.NEXT_PUBLIC_SERVER_BASE_URL) {
-    return process.env.NEXT_PUBLIC_SERVER_BASE_URL;
-  }
-  // Default to localhost:8001 if not set, useful for local dev without a .env file
-  return 'http://localhost:8001';
-};
-
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   requestBody: Record<string, any>,
@@ -1112,7 +1103,6 @@ IMPORTANT:
         // const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language); // Not needed for API call path
         setLoadingMessage(messages.loading?.fetchingCache || 'Checking for cached wiki...');
         try {
-          const apiUrl = getApiBaseUrl();
           const params = new URLSearchParams({
             owner: repoInfo.owner,
             repo: repoInfo.repo,
@@ -1186,7 +1176,6 @@ IMPORTANT:
               wiki_structure: wikiStructure,
               generated_pages: generatedPages
             };
-            const apiUrl = getApiBaseUrl();
             const response = await fetch(`/api/wiki_cache`, {
               method: 'POST',
               headers: {
