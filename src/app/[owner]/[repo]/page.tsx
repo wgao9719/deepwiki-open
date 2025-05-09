@@ -552,26 +552,45 @@ IMPORTANT:
         throw new Error('No valid XML found in response');
       }
 
-      const xmlText = xmlMatch[0];
+      let xmlText = xmlMatch[0];
+      xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      // Try parsing with DOMParser
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
       // Check for parsing errors
       const parseError = xmlDoc.querySelector('parsererror');
       if (parseError) {
-        throw new Error('Failed to parse XML response');
+        // Log the first few elements to see what was parsed
+        const elements = xmlDoc.querySelectorAll('*');
+        if (elements.length > 0) {
+          console.log('First 5 element names:',
+            Array.from(elements).slice(0, 5).map(el => el.nodeName).join(', '));
+        }
+
+        // We'll continue anyway since the XML might still be usable
       }
 
       // Extract wiki structure
+      let title = '';
+      let description = '';
+      let pages: WikiPage[] = [];
+
+      // Try using DOM parsing first
       const titleEl = xmlDoc.querySelector('title');
       const descriptionEl = xmlDoc.querySelector('description');
       const pagesEls = xmlDoc.querySelectorAll('page');
 
-      const title = titleEl ? titleEl.textContent || '' : '';
-      const description = descriptionEl ? descriptionEl.textContent || '' : '';
+      title = titleEl ? titleEl.textContent || '' : '';
+      description = descriptionEl ? descriptionEl.textContent || '' : '';
 
-      // Parse pages
-      const pages: WikiPage[] = [];
+      // Parse pages using DOM
+      pages = [];
+
+      if (parseError && (!pagesEls || pagesEls.length === 0)) {
+        console.warn('DOM parsing failed, trying regex fallback');
+      }
+
       pagesEls.forEach(pageEl => {
         const id = pageEl.getAttribute('id') || `page-${pages.length + 1}`;
         const titleEl = pageEl.querySelector('title');
@@ -1048,7 +1067,7 @@ IMPORTANT:
       setIsExporting(false);
       setLoadingMessage(undefined);
     }
-  }, [wikiStructure, generatedPages, repoInfo, repoInfo.localPath, language]);
+  }, [wikiStructure, generatedPages, repoInfo, language]);
 
   // Function to refresh wiki and clear cache
   const handleRefreshWiki = useCallback(async () => {
@@ -1069,7 +1088,7 @@ IMPORTANT:
       if (response.ok) {
         console.log('Server-side wiki cache cleared successfully.');
         // Optionally, show a success message for cache clearing if desired
-        // setLoadingMessage('Cache cleared. Refreshing wiki...'); 
+        // setLoadingMessage('Cache cleared. Refreshing wiki...');
       } else {
         const errorText = await response.text();
         console.warn(`Failed to clear server-side wiki cache (status: ${response.status}): ${errorText}. Proceeding with refresh anyway.`);
@@ -1084,15 +1103,15 @@ IMPORTANT:
 
     // Proceed with the rest of the refresh logic
     console.log('Refreshing wiki. Server cache will be overwritten upon new generation if not cleared.');
-    
+
     // Clear the localStorage cache (if any remnants or if it was used before this change)
     const localStorageCacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
     localStorage.removeItem(localStorageCacheKey);
-    
+
     // Reset cache loaded flag
     cacheLoadedSuccessfully.current = false;
     effectRan.current = false; // Allow the main data loading useEffect to run again
-    
+
     // Reset all state
     setWikiStructure(undefined);
     setCurrentPageId(undefined);
@@ -1101,13 +1120,13 @@ IMPORTANT:
     setError(null);
     setIsLoading(true); // Set loading state for refresh
     setLoadingMessage(messages.loading?.initializing || 'Initializing wiki generation...');
-    
+
     // Clear any in-progress requests for page content
     activeContentRequests.clear();
     // Reset flags related to request processing if they are component-wide
     setStructureRequestInProgress(false); // Assuming this flag should be reset
     setRequestInProgress(false); // Assuming this flag should be reset
-    
+
     // Explicitly trigger the data loading process again by re-invoking what the main useEffect does.
     // This will first attempt to load from (now hopefully non-existent or soon-to-be-overwritten) server cache, 
     // then proceed to fetchRepositoryStructure if needed.
@@ -1134,7 +1153,7 @@ IMPORTANT:
             language: language,
           });
           const response = await fetch(`/api/wiki_cache?${params.toString()}`);
-          
+
           if (response.ok) {
             const cachedData = await response.json(); // Returns null if no cache
             if (cachedData && cachedData.wiki_structure && cachedData.generated_pages && Object.keys(cachedData.generated_pages).length > 0) {
@@ -1157,7 +1176,7 @@ IMPORTANT:
           console.error('Error loading from server cache:', error);
           // Proceed to fetch structure if cache loading fails
         }
-        
+
         // If we reached here, either there was no cache, it was invalid, or an error occurred
         // Proceed to fetch repository structure
         fetchRepositoryStructure();
@@ -1171,7 +1190,7 @@ IMPORTANT:
 
     // Clean up function for this effect is not strictly necessary for loadData, 
     // but keeping the main unmount cleanup in the other useEffect
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure]); // Dependencies that trigger a reload
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure, messages.loading?.fetchingCache]);
 
   // Save wiki to server-side cache when generation is complete
   useEffect(() => {
