@@ -1055,10 +1055,38 @@ IMPORTANT:
 
   // Function to refresh wiki and clear cache
   const handleRefreshWiki = useCallback(async () => {
-    // Note: Clearing server-side cache is not implemented with a dedicated API endpoint in this iteration.
-    // Re-fetching and re-generating will overwrite the existing server cache.
-    // If explicit server cache deletion is needed, a DELETE /api/wiki_cache endpoint would be required.
-    console.log('Refreshing wiki. Server cache will be overwritten upon new generation.');
+    setLoadingMessage(messages.loading?.clearingCache || 'Clearing server cache...');
+    setIsLoading(true); // Show loading indicator immediately
+
+    try {
+      const params = new URLSearchParams({
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        repo_type: repoInfo.type,
+        language: language,
+      });
+      const response = await fetch(`/api/wiki_cache?${params.toString()}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        console.log('Server-side wiki cache cleared successfully.');
+        // Optionally, show a success message for cache clearing if desired
+        // setLoadingMessage('Cache cleared. Refreshing wiki...'); 
+      } else {
+        const errorText = await response.text();
+        console.warn(`Failed to clear server-side wiki cache (status: ${response.status}): ${errorText}. Proceeding with refresh anyway.`);
+        // Optionally, inform the user about the cache clear failure but that refresh will still attempt
+        // setError(\`Cache clear failed: ${errorText}. Trying to refresh...\`);
+      }
+    } catch (err) {
+      console.warn('Error calling DELETE /api/wiki_cache:', err);
+      // Optionally, inform the user about the cache clear error
+      // setError(\`Error clearing cache: ${err instanceof Error ? err.message : String(err)}. Trying to refresh...\`);
+    }
+
+    // Proceed with the rest of the refresh logic
+    console.log('Refreshing wiki. Server cache will be overwritten upon new generation if not cleared.');
     
     // Clear the localStorage cache (if any remnants or if it was used before this change)
     const localStorageCacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
@@ -1091,7 +1119,8 @@ IMPORTANT:
     // For now, we rely on the standard loadData flow initiated by resetting effectRan and dependencies.
     // This will re-trigger the main data loading useEffect.
     // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
-  }, [fetchRepositoryStructure, repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading?.initializing]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading, activeContentRequests]);
 
   // Start wiki generation when component mounts
   useEffect(() => {
@@ -1100,7 +1129,6 @@ IMPORTANT:
 
       const loadData = async () => {
         // Try loading from server-side cache first
-        // const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language); // Not needed for API call path
         setLoadingMessage(messages.loading?.fetchingCache || 'Checking for cached wiki...');
         try {
           const params = new URLSearchParams({
@@ -1164,8 +1192,7 @@ IMPORTANT:
           generatedPages[page.id] && generatedPages[page.id].content && generatedPages[page.id].content !== 'Loading...');
         
         if (allPagesHaveContent) {
-          console.log('Attempting to save wiki data to server cache');
-          // const cacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language); // Not needed for API call
+          console.log('Attempting to save wiki data to server cache via Next.js proxy');
           
           try {
             const dataToCache = {

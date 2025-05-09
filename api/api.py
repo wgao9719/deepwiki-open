@@ -351,6 +351,31 @@ async def store_wiki_cache(request_data: WikiCacheRequest):
     else:
         raise HTTPException(status_code=500, detail="Failed to save wiki cache")
 
+@app.delete("/api/wiki_cache")
+async def delete_wiki_cache(
+    owner: str = Query(..., description="Repository owner"),
+    repo: str = Query(..., description="Repository name"),
+    repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
+    language: str = Query(..., description="Language of the wiki content")
+):
+    """
+    Deletes a specific wiki cache from the file system.
+    """
+    logger.info(f"Attempting to delete wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
+    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
+
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+            logger.info(f"Successfully deleted wiki cache: {cache_path}")
+            return {"message": f"Wiki cache for {owner}/{repo} ({language}) deleted successfully"}
+        except Exception as e:
+            logger.error(f"Error deleting wiki cache {cache_path}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete wiki cache: {str(e)}")
+    else:
+        logger.warning(f"Wiki cache not found, cannot delete: {cache_path}")
+        raise HTTPException(status_code=404, detail="Wiki cache not found")
+
 @app.get("/")
 async def root():
     """Root endpoint to check if the API is running"""
