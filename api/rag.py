@@ -1,9 +1,11 @@
-from typing import Any, List, Tuple, Dict
-from uuid import uuid4
 import logging
 import re
+from dataclasses import dataclass
+from typing import Any, List, Tuple, Dict
+from uuid import uuid4
+
 import adalflow as adal
-from dataclasses import dataclass, field
+
 
 # Create our own implementation of the conversation classes
 @dataclass
@@ -224,7 +226,7 @@ class RAG(adal.Component):
         else:
             embedder_config = configs["embedder"]
             generator_config = configs["generator"]
-
+        
         # --- Initialize Embedder ---
         self.embedder = adal.Embedder(
             model_client=embedder_config["model_client"](),

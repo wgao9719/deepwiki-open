@@ -1,7 +1,7 @@
 from adalflow import GoogleGenAIClient, OllamaClient
-from adalflow.components.model_client.openai_client import OpenAIClient
 import os
 
+from api.openai_client import OpenAIClient
 from api.openrouter_client import OpenRouterClient
 
 # Configuration for the isolated API
@@ -10,7 +10,7 @@ configs = {
         "batch_size": 500,
         "model_client": OpenAIClient,
         "model_kwargs": {
-            "model": "text-embedding-3-small",
+            "model": "text-embedding-3-large",
             "dimensions": 256,
             "encoding_format": "float",
         },
@@ -21,12 +21,19 @@ configs = {
     "generator": {
         "model_client": GoogleGenAIClient,
         "model_kwargs": {
-            "model": "gemini-2.0-flash",
+            "model": "gemini-2.5-flash-preview-04-17",
             "temperature": 0.7,
             "top_p": 0.8,
-            "top_k": 40
         },
     },
+    # "generator": {
+    #     "model_client": OpenAIClient,
+    #     "model_kwargs": {
+    #         "model": "o4-mini",
+    #         "temperature": 0.7,
+    #         "top_p": 0.8
+    #     },
+    # },
     "embedder_ollama": {
         "model_client": OllamaClient,
         "model_kwargs": {
@@ -51,6 +58,14 @@ configs = {
             "top_p": 0.8,
         },
     },
+    "generator_openai": {
+        "model_client": OpenAIClient,
+        "model_kwargs": {
+            "model": "o4-mini",
+            "temperature": 0.7,
+            "top_p": 0.8,
+        },
+    },
     "text_splitter": {
         "split_by": "word",
         "chunk_size": 350,
@@ -65,7 +80,7 @@ configs = {
             "./dist/", "./build/", "./out/", "./target/", "./bin/", "./obj/",
             "./docs/", "./_docs/", "./site-docs/", "./_site/",
             "./.idea/", "./.vscode/", "./.vs/", "./.eclipse/", "./.settings/",
-            "./logs/", "./log/", "./tmp/", "./temp/",
+            "./logs/", "./log/", "./tmp/", "./temp/", "./.eng",
         ],
         "excluded_files": [
             "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json",

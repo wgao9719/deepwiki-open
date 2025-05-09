@@ -25,12 +25,14 @@ interface AskProps {
   localOllama?: boolean;
   useOpenRouter?: boolean;
   openRouterModel?: string;
+  useOpenai?: boolean;
+  openaiModel?: string;
   language?: string;
 }
 
 
 
-const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false, useOpenRouter = false, openRouterModel = 'openai/gpt-4o', language = 'en' }) => {
+const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketToken, localOllama = false, useOpenRouter = false, openRouterModel = 'openai/gpt-4o', useOpenai = false, openaiModel = 'gpt-4o', language = 'en' }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -219,12 +221,17 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
         messages: newHistory,
         local_ollama: localOllama,
         use_openrouter: useOpenRouter,
+        use_openai: useOpenai,
         language: language
       };
 
       // Add OpenRouter model if using OpenRouter
       if (useOpenRouter) {
         requestBody.openrouter_model = openRouterModel;
+      }
+
+      if (useOpenai) {
+        requestBody.openai_model = openaiModel;
       }
 
       // Add tokens if available
@@ -402,12 +409,17 @@ const Ask: React.FC<AskProps> = ({ repoUrl, githubToken, gitlabToken, bitbucketT
         messages: newHistory,
         local_ollama: localOllama,
         use_openrouter: useOpenRouter,
+        use_openai: useOpenai,
         language: language
       };
 
       // Add OpenRouter model if using OpenRouter
       if (useOpenRouter) {
         requestBody.openrouter_model = openRouterModel;
+      }
+
+      if(useOpenai) {
+        requestBody.openai_model = openaiModel;
       }
 
       // Add tokens if available
