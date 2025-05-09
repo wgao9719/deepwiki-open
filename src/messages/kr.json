@@ -61,19 +61,19 @@
       "viewConclusion": "결론 보기"
     },
     "repoPage": {
-      "refreshWiki": "Refresh Wiki",
-      "home": "Home",
-      "errorTitle": "Error",
-      "errorMessageDefault": "Please check that your repository exists and is public. Valid formats are \"owner/repo\", \"https://github.com/owner/repo\", \"https://gitlab.com/owner/repo\", \"https://bitbucket.org/owner/repo\", or local folder paths like \"C:\\\\path\\\\to\\\\folder\" or \"/path/to/folder\".",
-      "backToHome": "Back to Home",
-      "exportWiki": "Export Wiki",
-      "exportAsMarkdown": "Export as Markdown",
-      "exportAsJson": "Export as JSON",
-      "pages": "Pages",
-      "relatedFiles": "Related Files:",
-      "relatedPages": "Related Pages:",
-      "selectPagePrompt": "Select a page from the navigation to view its content",
-      "askAboutRepo": "Ask questions about this repository"
+      "refreshWiki": "위키 새로고침",
+      "home": "홈",
+      "errorTitle": "오류",
+      "errorMessageDefault": "저장소가 존재하며 공개 상태인지 확인해 주세요. 유효한 형식은 \"owner/repo\", \"https://github.com/owner/repo\", \"https://gitlab.com/owner/repo\", \"https://bitbucket.org/owner/repo\" 또는 로컬 폴더 경로 \"C:\\\\path\\\\to\\\\folder\" 혹은 \"/path/to/folder\" 입니다.",
+      "backToHome": "홈으로 돌아가기",
+      "exportWiki": "위키 내보내기",
+      "exportAsMarkdown": "마크다운으로 내보내기",
+      "exportAsJson": "JSON으로 내보내기",
+      "pages": "페이지",
+      "relatedFiles": "관련 파일:",
+      "relatedPages": "관련 페이지:",
+      "selectPagePrompt": "목록에서 페이지를 선택하여 내용을 확인하세요",
+      "askAboutRepo": "이 저장소에 대해 질문하기"
     },
     "nav": {
       "wikiProjects": "프로젝트 목록"
