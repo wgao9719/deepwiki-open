@@ -191,12 +191,21 @@ docker run -p 8001:8001 -p 3000:3000 \
   ghcr.io/asyncfuncai/deepwiki-open:latest
 ```
 
+This command also mounts `~/.adalflow` on your host to `/root/.adalflow` in the container. This path is used to store:
+- Cloned repositories (`~/.adalflow/repos/`)
+- Their embeddings and indexes (`~/.adalflow/databases/`)
+- Cached generated wiki content (`~/.adalflow/wikicache/`)
+
+This ensures that your data persists even if the container is stopped or removed.
+
 Or use the provided `docker-compose.yml` file:
 
 ```bash
 # Edit the .env file with your API keys first
 docker-compose up
 ```
+
+(The `docker-compose.yml` file is pre-configured to mount `~/.adalflow` for data persistence, similar to the `docker run` command above.)
 
 #### Using a .env file with Docker
 
@@ -214,6 +223,13 @@ docker run -p 8001:8001 -p 3000:3000 \
   -v ~/.adalflow:/root/.adalflow \
   ghcr.io/asyncfuncai/deepwiki-open:latest
 ```
+
+This command also mounts `~/.adalflow` on your host to `/root/.adalflow` in the container. This path is used to store:
+- Cloned repositories (`~/.adalflow/repos/`)
+- Their embeddings and indexes (`~/.adalflow/databases/`)
+- Cached generated wiki content (`~/.adalflow/wikicache/`)
+
+This ensures that your data persists even if the container is stopped or removed.
 
 #### Building the Docker image locally
 

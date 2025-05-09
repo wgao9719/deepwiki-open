@@ -14,6 +14,7 @@
     "initializing": "Initializing wiki generation...",
     "fetchingStructure": "Fetching repository structure...",
     "determiningStructure": "Determining wiki structure...",
+    "clearingCache": "Clearing server cache...",
     "preparingDownload": "Please wait while we prepare your download..."
   },
   "home": {
@@ -70,5 +71,8 @@
     "relatedPages": "Related Pages:",
     "selectPagePrompt": "Select a page from the navigation to view its content",
     "askAboutRepo": "Ask questions about this repository"
+  },
+  "nav": {
+    "wikiProjects": "Wiki Projects"
   }
 }
