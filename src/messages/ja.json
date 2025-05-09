@@ -70,5 +70,8 @@
     "relatedPages": "関連ページ:",
     "selectPagePrompt": "ナビゲーションからページを選択してコンテンツを表示",
     "askAboutRepo": "このリポジトリについて質問する"
+  },
+  "nav": {
+    "wikiProjects": "プロジェクト一覧"
   }
 }

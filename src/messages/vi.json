@@ -71,5 +71,8 @@
     "relatedPages": "Trang liên quan:",
     "selectPagePrompt": "Chọn một trang từ thanh điều hướng để xem nội dung của nó",
     "askAboutRepo": "Hỏi về repository này"
+  },
+  "nav": {
+    "wikiProjects": "Danh sách dự án"
   }
 }

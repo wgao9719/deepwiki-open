@@ -71,5 +71,8 @@
     "relatedPages": "Related Pages:",
     "selectPagePrompt": "Select a page from the navigation to view its content",
     "askAboutRepo": "Ask questions about this repository"
+  },
+  "nav": {
+    "wikiProjects": "Wiki Projects"
   }
 }
