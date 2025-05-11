@@ -8,17 +8,17 @@
         "gemini-2.0-flash": {
           "temperature": 0.7,
           "top_p": 0.8,
-          "top_k": 40
+          "top_k": 20
         },
-        "gemini-1.5-flash": {
+        "gemini-2.5-flash-preview-04-17": {
           "temperature": 0.7,
           "top_p": 0.8,
-          "top_k": 40
+          "top_k": 20
         },
-        "gemini-1.0-pro": {
+        "gemini-2.5-pro-preview-05-06": {
           "temperature": 0.7,
           "top_p": 0.8,
-          "top_k": 40
+          "top_k": 20
         }
       }
     },
