@@ -1,10 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import UserSelector from './UserSelector';
-import WikiTypeSelector from './WikiTypeSelector';
-
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
