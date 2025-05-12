@@ -80,7 +80,7 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         if request.messages and len(request.messages) > 0:
             last_message = request.messages[-1]
             if hasattr(last_message, 'content') and last_message.content:
-                tokens = count_tokens(last_message.content, local_ollama=False)
+                tokens = count_tokens(last_message.content, request.provider == "ollama")
                 logger.info(f"Request size: {tokens} tokens")
                 if tokens > 8000:
                     logger.warning(f"Request exceeds recommended token limit ({tokens} > 7500)")
@@ -100,7 +100,7 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 excluded_files = [unquote(file_pattern) for file_pattern in request.excluded_files.split('\n') if file_pattern.strip()]
                 logger.info(f"Using custom excluded files: {excluded_files}")
 
-            request_rag.prepare_retriever(request.repo_url, request.type, request.token, False, excluded_dirs, excluded_files)
+            request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files)
             logger.info(f"Retriever prepared for {request.repo_url}")
         except Exception as e:
             logger.error(f"Error preparing retriever: {str(e)}")
@@ -393,7 +393,7 @@ This file contains...
 
         # Create the prompt with context
         prompt = f"/no_think {system_prompt}\n\n"
-
+        
         if conversation_history:
             prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
@@ -425,7 +425,8 @@ This file contains...
                 "stream": True,
                 "options": {
                     "temperature": model_config["temperature"],
-                    "top_p": model_config["top_p"]
+                    "top_p": model_config["top_p"],
+                    "num_ctx": model_config["num_ctx"]
                 }
             }
 
@@ -491,7 +492,6 @@ This file contains...
         # Create a streaming response
         async def response_stream():
             try:
-
                 if request.provider == "ollama":
                     # Get the response and handle it properly using the previously created api_kwargs
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
@@ -499,6 +499,7 @@ This file contains...
                     async for chunk in response:
                         text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                         if text and not text.startswith('model=') and not text.startswith('created_at='):
+                            text = text.replace('<think>', '').replace('</think>', '')
                             yield text
                 elif request.provider == "openrouter":
                     try:
@@ -574,6 +575,7 @@ This file contains...
                             async for chunk in fallback_response:
                                 text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
                                 if text and not text.startswith('model=') and not text.startswith('created_at='):
+                                    text = text.replace('<think>', '').replace('</think>', '')
                                     yield text
                         elif request.provider == "openrouter":
                             try:

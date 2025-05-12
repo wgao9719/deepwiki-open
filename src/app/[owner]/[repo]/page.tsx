@@ -543,7 +543,7 @@ Create a structured wiki with the following main sections:
 - Backend Systems (server-side components)
 - Model Integration (AI model connections)
 - Deployment/Infrastructure (how to deploy, what's the infrastructure like)
-- Extensibility & Customization: If the project architecture supports it, explain how to extend or customize its functionality (e.g., plugins, theming, custom modules, hooks).
+- Extensibility and Customization: If the project architecture supports it, explain how to extend or customize its functionality (e.g., plugins, theming, custom modules, hooks).
 
 Each section should contain relevant pages. For example, the "Frontend Components" section might include pages for "Home Page", "Repository Wiki Page", "Ask Component", etc.
 

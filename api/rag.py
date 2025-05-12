@@ -287,7 +287,7 @@ IMPORTANT FORMATTING RULES:
         self.db_manager = DatabaseManager()
         self.transformed_docs = []
 
-    def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None, local_ollama: bool = False, 
+    def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None, 
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None):
         """
         Prepare the retriever for a repository.
@@ -296,7 +296,6 @@ IMPORTANT FORMATTING RULES:
         Args:
             repo_url_or_path: URL or local path to the repository
             access_token: Optional access token for private repositories
-            local_ollama: Optional flag to use local Ollama for embedding
             excluded_dirs: Optional list of directories to exclude from processing
             excluded_files: Optional list of file patterns to exclude from processing
         """
@@ -306,13 +305,13 @@ IMPORTANT FORMATTING RULES:
             repo_url_or_path, 
             type, 
             access_token, 
-            local_ollama=local_ollama,
+            local_ollama=self.local_ollama,
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files
         )
         logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
-        retreive_embedder = self.query_embedder if local_ollama else self.embedder
+        retreive_embedder = self.query_embedder if self.local_ollama else self.embedder
         self.retriever = FAISSRetriever(
             **configs["retriever"],
             embedder=retreive_embedder,
