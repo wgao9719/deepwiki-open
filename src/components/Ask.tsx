@@ -27,27 +27,30 @@ interface AskProps {
   isCustomModel?: boolean;
   customModel?: string;
   language?: string;
+  onRef?: (ref: { clearConversation: () => void }) => void;
 }
 
-const Ask: React.FC<AskProps> = ({ 
+const Ask: React.FC<AskProps> = ({
   repoInfo,
   provider = '',
   model = '',
   isCustomModel = false,
   customModel = '',
-  language = 'en' 
+  language = 'en',
+  onRef
 }) => {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
-  
+
   // Model selection state
   const [selectedProvider, setSelectedProvider] = useState(provider);
   const [selectedModel, setSelectedModel] = useState(model);
   const [isCustomSelectedModel, setIsCustomSelectedModel] = useState(isCustomModel);
   const [customSelectedModel, setCustomSelectedModel] = useState(customModel);
   const [isModelSelectionModalOpen, setIsModelSelectionModalOpen] = useState(false);
+  const [isComprehensiveView, setIsComprehensiveView] = useState(true);
 
   // Get language context for translations
   const { messages } = useLanguage();
@@ -67,6 +70,13 @@ const Ask: React.FC<AskProps> = ({
       inputRef.current.focus();
     }
   }, []);
+
+  // Expose clearConversation method to parent component
+  useEffect(() => {
+    if (onRef) {
+      onRef({ clearConversation });
+    }
+  }, [onRef]);
 
   // Scroll to bottom of response when it changes
   useEffect(() => {
@@ -378,10 +388,10 @@ const Ask: React.FC<AskProps> = ({
     e.preventDefault();
 
     if (!question.trim() || isLoading) return;
-    
+
     handleConfirmAsk();
   };
-  
+
   // Handle confirm and send request
   const handleConfirmAsk = async () => {
     setIsLoading(true);
@@ -477,14 +487,10 @@ const Ask: React.FC<AskProps> = ({
   };
 
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-md overflow-hidden shadow-sm">
+    <div>
       <div className="p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-serif text-[var(--accent-primary)]">
-            {messages.ask?.title || 'Ask about this repository'}
-          </h2>
-          
-          {/* Model selection button next to title */}
+        <div className="flex items-center justify-end mb-4">
+          {/* Model selection button */}
           <button
             type="button"
             onClick={() => setIsModelSelectionModalOpen(true)}
@@ -505,27 +511,32 @@ const Ask: React.FC<AskProps> = ({
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder={messages.ask?.placeholder || 'Ask a question about this repo...'}
-              className="block w-full rounded-md border-2 border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--foreground)] px-4 py-3 text-base focus:border-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-opacity-50 transition-all"
+              placeholder={messages.ask?.placeholder || 'What would you like to know about this codebase?'}
+              className="block w-full rounded-md border border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--foreground)] px-5 py-3.5 text-base shadow-sm focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:outline-none transition-all"
               disabled={isLoading}
             />
             <button
               type="submit"
               disabled={isLoading || !question.trim()}
-              className={`absolute right-3 top-1/2 transform -translate-y-1/2 px-3 py-1.5 rounded-md ${
+              className={`absolute right-3 top-1/2 transform -translate-y-1/2 px-4 py-2 rounded-md font-medium text-sm ${
                 isLoading || !question.trim()
                   ? 'bg-[var(--button-disabled-bg)] text-[var(--button-disabled-text)] cursor-not-allowed'
-                  : 'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:bg-[var(--button-primary-bg-hover)]'
-              } transition-colors`}
+                  : 'bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary)]/90 shadow-sm'
+              } transition-all duration-200 flex items-center gap-1.5`}
             >
               {isLoading ? (
-                <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-[var(--button-primary-text)] animate-spin" />
+                <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-white animate-spin" />
               ) : (
-                messages.ask?.askButton || 'Ask'
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                  <span>{messages.ask?.askButton || 'Ask'}</span>
+                </>
               )}
             </button>
           </div>
-          
+
           {/* Deep Research toggle */}
           <div className="flex items-center mt-2 justify-between">
             <div className="group relative">
@@ -612,6 +623,7 @@ const Ask: React.FC<AskProps> = ({
 
               {/* Clear button */}
               <button
+                id="ask-clear-conversation"
                 onClick={clearConversation}
                 className="text-xs text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
               >
@@ -732,6 +744,8 @@ const Ask: React.FC<AskProps> = ({
         setIsCustomModel={setIsCustomSelectedModel}
         customModel={customSelectedModel}
         setCustomModel={setCustomSelectedModel}
+        isComprehensiveView={isComprehensiveView}
+        setIsComprehensiveView={setIsComprehensiveView}
         showFileFilters={false}
         onApply={() => {
           console.log('Model selection applied:', selectedProvider, selectedModel);

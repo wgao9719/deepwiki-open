@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FaWikipediaW, FaGithub, FaGitlab, FaBitbucket, FaCoffee, FaTwitter } from 'react-icons/fa';
+import { FaWikipediaW, FaGithub, FaCoffee, FaTwitter } from 'react-icons/fa';
 import ThemeToggle from '@/components/theme-toggle';
 import Mermaid from '../components/Mermaid';
-import UserSelector from '@/components/UserSelector';
+import ConfigurationModal from '@/components/ConfigurationModal';
 import { extractUrlPath } from '@/utils/urlDecoder';
 
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -73,13 +73,15 @@ export default function Home() {
   };
 
   const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
-  const [showTokenInputs, setShowTokenInputs] = useState(false);
 
   // Provider-based model selection state
   const [provider, setProvider] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [isCustomModel, setIsCustomModel] = useState<boolean>(false);
   const [customModel, setCustomModel] = useState<string>('');
+
+  // Wiki type state - default to comprehensive view
+  const [isComprehensiveView, setIsComprehensiveView] = useState<boolean>(true);
 
   const [excludedDirs, setExcludedDirs] = useState('');
   const [excludedFiles, setExcludedFiles] = useState('');
@@ -155,9 +157,26 @@ export default function Home() {
     return { owner, repo, type, fullPath, localPath };
   };
 
+  // State for configuration modal
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Parse repository input to validate
+    const parsedRepo = parseRepositoryInput(repositoryInput);
+
+    if (!parsedRepo) {
+      setError('Invalid repository format. Use "owner/repo", GitHub/GitLab/BitBucket URL, or a local folder path like "/path/to/folder" or "C:\\path\\to\\folder".');
+      return;
+    }
+
+    // If valid, open the configuration modal
+    setError(null);
+    setIsConfigModalOpen(true);
+  };
+
+  const handleGenerateWiki = () => {
     // Prevent multiple submissions
     if (isSubmitting) {
       console.log('Form submission already in progress, ignoring duplicate click');
@@ -206,6 +225,9 @@ export default function Home() {
 
     // Add language parameter
     params.append('language', selectedLanguage);
+
+    // Add comprehensive parameter
+    params.append('comprehensive', isComprehensiveView.toString());
 
     const queryString = params.toString() ? `?${params.toString()}` : '';
 
@@ -263,158 +285,36 @@ export default function Home() {
                 {isSubmitting ? t('common.processing') : t('common.generateWiki')}
               </button>
             </div>
-
-            {/* Advanced options section with improved layout */}
-            <div
-              className="flex flex-wrap gap-4 items-start bg-[var(--card-bg)]/80 p-4 rounded-lg border border-[var(--border-color)] shadow-custom card-japanese">
-              {/* Language selection */}
-              <div className="min-w-[140px]">
-                <label htmlFor="language-select"
-                  className="block text-xs font-medium text-[var(--foreground)] mb-1.5">
-                  {t('form.wikiLanguage')}
-                </label>
-                <select
-                  id="language-select"
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="input-japanese block w-full px-2.5 py-1.5 text-sm rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
-                >
-                  <option value="en">English</option>
-                  <option value="ja">Japanese (日本語)</option>
-                  <option value="zh">Mandarin (中文)</option>
-                  <option value="es">Spanish (Español)</option>
-                  <option value="kr">Korean (한국어)</option>
-                  <option value="vi">Vietnamese (Tiếng Việt)</option>
-                </select>
-              </div>
-
-              {/* Model options */}
-              <div className="flex-1 min-w-[200px]">
-                <UserSelector
-                  provider={provider}
-                  setProvider={setProvider}
-                  model={model}
-                  setModel={setModel}
-                  isCustomModel={isCustomModel}
-                  setIsCustomModel={setIsCustomModel}
-                  customModel={customModel}
-                  setCustomModel={setCustomModel}
-                  showFileFilters={true}
-                  excludedDirs={excludedDirs}
-                  setExcludedDirs={setExcludedDirs}
-                  excludedFiles={excludedFiles}
-                  setExcludedFiles={setExcludedFiles}
-                />
-              </div>
-            </div>
-
-            {/* Access tokens button */}
-            <div className="flex items-center relative">
-              <button
-                type="button"
-                onClick={() => setShowTokenInputs(!showTokenInputs)}
-                className="text-sm text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
-              >
-                {showTokenInputs ? t('form.hideTokens') : t('form.addTokens')}
-              </button>
-              {showTokenInputs && (
-                <>
-                  <div className="fixed inset-0 bg-black/20 dark:bg-black/40 z-40"
-                    onClick={() => setShowTokenInputs(false)} />
-                  <div className="absolute left-0 right-0 top-full mt-2 z-50">
-                    <div
-                      className="flex flex-col gap-3 p-4 bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-custom card-japanese">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-medium text-[var(--accent-primary)] mb-3 flex items-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {t('form.accessToken')}
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setShowTokenInputs(false)}
-                          className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-                        >
-                          <span className="sr-only">Close</span>
-                          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      <div className="bg-[var(--background)]/50 p-3 rounded-md border border-[var(--border-color)]">
-                        <label className="block text-xs font-medium text-[var(--foreground)] mb-2">
-                          {t('form.selectPlatform')}
-                        </label>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPlatform('github')}
-                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md border transition-all ${selectedPlatform === 'github'
-                              ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)] shadow-sm'
-                              : 'border-[var(--border-color)] text-[var(--foreground)] hover:bg-[var(--background)]'
-                              }`}
-                          >
-                            <FaGithub className="text-lg" />
-                            <span className="text-sm">GitHub</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPlatform('gitlab')}
-                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md border transition-all ${selectedPlatform === 'gitlab'
-                              ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)] shadow-sm'
-                              : 'border-[var(--border-color)] text-[var(--foreground)] hover:bg-[var(--background)]'
-                              }`}
-                          >
-                            <FaGitlab className="text-lg" />
-                            <span className="text-sm">GitLab</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedPlatform('bitbucket')}
-                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md border transition-all ${selectedPlatform === 'bitbucket'
-                              ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)] text-[var(--accent-primary)] shadow-sm'
-                              : 'border-[var(--border-color)] text-[var(--foreground)] hover:bg-[var(--background)]'
-                              }`}
-                          >
-                            <FaBitbucket className="text-lg" />
-                            <span className="text-sm">Bitbucket</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label htmlFor="access-token"
-                          className="block text-xs font-medium text-[var(--foreground)] mb-2">
-                          {t('form.personalAccessToken', { platform: selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) })}
-                        </label>
-                        <input
-                          id="access-token"
-                          type="password"
-                          value={accessToken}
-                          onChange={(e) => setAccessToken(e.target.value)}
-                          placeholder={t('form.tokenPlaceholder', { platform: selectedPlatform })}
-                          className="input-japanese block w-full px-3 py-2 rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)] text-sm"
-                        />
-                        <div className="flex items-center mt-2 text-xs text-[var(--muted)]">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-[var(--muted)]"
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {t('form.tokenSecurityNote')}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
           </form>
+
+          {/* Configuration Modal */}
+          <ConfigurationModal
+            isOpen={isConfigModalOpen}
+            onClose={() => setIsConfigModalOpen(false)}
+            repositoryInput={repositoryInput}
+            selectedLanguage={selectedLanguage}
+            setSelectedLanguage={setSelectedLanguage}
+            isComprehensiveView={isComprehensiveView}
+            setIsComprehensiveView={setIsComprehensiveView}
+            provider={provider}
+            setProvider={setProvider}
+            model={model}
+            setModel={setModel}
+            isCustomModel={isCustomModel}
+            setIsCustomModel={setIsCustomModel}
+            customModel={customModel}
+            setCustomModel={setCustomModel}
+            selectedPlatform={selectedPlatform}
+            setSelectedPlatform={setSelectedPlatform}
+            accessToken={accessToken}
+            setAccessToken={setAccessToken}
+            excludedDirs={excludedDirs}
+            setExcludedDirs={setExcludedDirs}
+            excludedFiles={excludedFiles}
+            setExcludedFiles={setExcludedFiles}
+            onSubmit={handleGenerateWiki}
+            isSubmitting={isSubmitting}
+          />
 
         </div>
       </header>

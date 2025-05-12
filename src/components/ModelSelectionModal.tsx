@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import UserSelector from './UserSelector';
+import WikiTypeSelector from './WikiTypeSelector';
 
 interface ModelSelectionModalProps {
   isOpen: boolean;
@@ -16,7 +17,11 @@ interface ModelSelectionModalProps {
   customModel: string;
   setCustomModel: (value: string) => void;
   onApply: () => void;
-  
+
+  // Wiki type options
+  isComprehensiveView: boolean;
+  setIsComprehensiveView: (value: boolean) => void;
+
   // File filter options - optional
   excludedDirs?: string;
   setExcludedDirs?: (value: string) => void;
@@ -37,6 +42,8 @@ export default function ModelSelectionModal({
   customModel,
   setCustomModel,
   onApply,
+  isComprehensiveView,
+  setIsComprehensiveView,
   excludedDirs = '',
   setExcludedDirs,
   excludedFiles = '',
@@ -44,15 +51,16 @@ export default function ModelSelectionModal({
   showFileFilters = false
 }: ModelSelectionModalProps) {
   const { messages: t } = useLanguage();
-  
+
   // Local state for form values (to only apply changes when the user clicks "Submit")
   const [localProvider, setLocalProvider] = useState(provider);
   const [localModel, setLocalModel] = useState(model);
   const [localIsCustomModel, setLocalIsCustomModel] = useState(isCustomModel);
   const [localCustomModel, setLocalCustomModel] = useState(customModel);
+  const [localIsComprehensiveView, setLocalIsComprehensiveView] = useState(isComprehensiveView);
   const [localExcludedDirs, setLocalExcludedDirs] = useState(excludedDirs);
   const [localExcludedFiles, setLocalExcludedFiles] = useState(excludedFiles);
-  
+
   // Reset local state when modal is opened
   useEffect(() => {
     if (isOpen) {
@@ -60,10 +68,11 @@ export default function ModelSelectionModal({
       setLocalModel(model);
       setLocalIsCustomModel(isCustomModel);
       setLocalCustomModel(customModel);
+      setLocalIsComprehensiveView(isComprehensiveView);
       setLocalExcludedDirs(excludedDirs);
       setLocalExcludedFiles(excludedFiles);
     }
-  }, [isOpen, provider, model, isCustomModel, customModel, excludedDirs, excludedFiles]);
+  }, [isOpen, provider, model, isCustomModel, customModel, isComprehensiveView, excludedDirs, excludedFiles]);
 
   // Handler for applying changes
   const handleApply = () => {
@@ -71,6 +80,7 @@ export default function ModelSelectionModal({
     setModel(localModel);
     setIsCustomModel(localIsCustomModel);
     setCustomModel(localCustomModel);
+    setIsComprehensiveView(localIsComprehensiveView);
     if (setExcludedDirs) setExcludedDirs(localExcludedDirs);
     if (setExcludedFiles) setExcludedFiles(localExcludedFiles);
     onApply();
@@ -101,6 +111,16 @@ export default function ModelSelectionModal({
 
           {/* Modal body */}
           <div className="p-6">
+            {/* Wiki Type Selector */}
+            <WikiTypeSelector
+              isComprehensiveView={localIsComprehensiveView}
+              setIsComprehensiveView={setLocalIsComprehensiveView}
+            />
+
+            {/* Divider */}
+            <div className="my-4 border-t border-[var(--border-color)]/30"></div>
+
+            {/* Model Selector */}
             <UserSelector
               provider={localProvider}
               setProvider={setLocalProvider}

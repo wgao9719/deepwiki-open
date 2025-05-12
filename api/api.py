@@ -127,20 +127,20 @@ from api.config import configs
 async def get_model_config():
     """
     Get available model providers and their models.
-    
+
     This endpoint returns the configuration of available model providers and their
     respective models that can be used throughout the application.
-    
+
     Returns:
         ModelConfig: A configuration object containing providers and their models
     """
     try:
         logger.info("Fetching model configurations")
-        
+
         # Create providers from the config file
         providers = []
         default_provider = configs.get("default_provider", "google")
-        
+
         # Add provider configuration based on config.py
         for provider_id, provider_config in configs["providers"].items():
             models = []
@@ -148,7 +148,7 @@ async def get_model_config():
             for model_id in provider_config["models"].keys():
                 # Get a more user-friendly display name if possible
                 models.append(Model(id=model_id, name=model_id))
-            
+
             # Add provider with its models
             providers.append(
                 Provider(
@@ -158,14 +158,14 @@ async def get_model_config():
                     models=models
                 )
             )
-            
+
         # Create and return the full configuration
         config = ModelConfig(
             providers=providers,
             defaultProvider=default_provider
         )
         return config
-        
+
     except Exception as e:
         logger.error(f"Error creating model configuration: {str(e)}")
         # Return some default configuration in case of error
@@ -277,7 +277,7 @@ async def get_local_repo_structure(path: str = Query(None, description="Path to 
             status_code=500,
             content={"error": f"Error processing local repository: {str(e)}"}
         )
-    
+
 def generate_markdown_export(repo_url: str, pages: List[WikiPage]) -> str:
     """
     Generate Markdown export of wiki pages.
@@ -304,12 +304,7 @@ def generate_markdown_export(repo_url: str, pages: List[WikiPage]) -> str:
         markdown += f"<a id='{page.id}'></a>\n\n"
         markdown += f"## {page.title}\n\n"
 
-        # Add related files
-        if page.filePaths and len(page.filePaths) > 0:
-            markdown += "### Related Files\n\n"
-            for file_path in page.filePaths:
-                markdown += f"- `{file_path}`\n"
-            markdown += "\n"
+
 
         # Add related pages
         if page.relatedPages and len(page.relatedPages) > 0:
@@ -507,7 +502,7 @@ async def get_processed_projects():
         if not os.path.exists(WIKI_CACHE_DIR):
             logger.info(f"Cache directory {WIKI_CACHE_DIR} not found. Returning empty list.")
             return []
-        
+
         logger.info(f"Scanning for project cache files in: {WIKI_CACHE_DIR}")
         filenames = await asyncio.to_thread(os.listdir, WIKI_CACHE_DIR) # Use asyncio.to_thread for os.listdir
 
@@ -517,7 +512,7 @@ async def get_processed_projects():
                 try:
                     stats = await asyncio.to_thread(os.stat, file_path) # Use asyncio.to_thread for os.stat
                     parts = filename.replace("deepwiki_cache_", "").replace(".json", "").split('_')
-                    
+
                     # Expecting repo_type_owner_repo_language
                     # Example: deepwiki_cache_github_AsyncFuncAI_deepwiki-open_en.json
                     # parts = [github, AsyncFuncAI, deepwiki-open, en]

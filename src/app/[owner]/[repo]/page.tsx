@@ -3,18 +3,46 @@
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaComments, FaTimes } from 'react-icons/fa';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
 import Markdown from '@/components/Markdown';
 import Ask from '@/components/Ask';
 import ModelSelectionModal from '@/components/ModelSelectionModal';
+import WikiTreeView from '@/components/WikiTreeView';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { RepoInfo } from '@/types/repoinfo';
 import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
 import getRepoUrl from '@/utils/getRepoUrl';
-import { WikiStructure } from '@/types/wiki/wikistructure';
-import { WikiPage } from '@/types/wiki/wikipage';
+// Define the WikiSection and WikiStructure types directly in this file
+// since the imported types don't have the sections and rootSections properties
+interface WikiSection {
+  id: string;
+  title: string;
+  pages: string[];
+  subsections?: string[];
+}
+
+interface WikiPage {
+  id: string;
+  title: string;
+  content: string;
+  filePaths: string[];
+  importance: 'high' | 'medium' | 'low';
+  relatedPages: string[];
+  parentId?: string;
+  isSection?: boolean;
+  children?: string[];
+}
+
+interface WikiStructure {
+  id: string;
+  title: string;
+  description: string;
+  pages: WikiPage[];
+  sections: WikiSection[];
+  rootSections: string[];
+}
 
 // Add CSS styles for wiki with Japanese aesthetic
 const wikiStyles = `
@@ -60,8 +88,8 @@ const wikiStyles = `
 `;
 
 // Helper function to generate cache key for localStorage
-const getCacheKey = (owner: string, repo: string, repoType: string, language: string): string => {
-  return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}`;
+const getCacheKey = (owner: string, repo: string, repoType: string, language: string, isComprehensive: boolean = true): string => {
+  return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}_${isComprehensive ? 'comprehensive' : 'concise'}`;
 };
 
 // Helper function to add tokens and other parameters to request body
@@ -81,16 +109,16 @@ const addTokensToRequestBody = (
   if (token !== '') {
     requestBody.token = token;
   }
-  
+
   // Add provider-based model selection parameters
   requestBody.provider = provider;
   requestBody.model = model;
   if (isCustomModel && customModel) {
     requestBody.custom_model = customModel;
   }
-  
+
   requestBody.language = language;
-  
+
   // Add file filter parameters if provided
   if (excludedDirs) {
     requestBody.excluded_dirs = excludedDirs;
@@ -184,7 +212,7 @@ export default function RepoWikiPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
   const [requestInProgress, setRequestInProgress] = useState(false);
-  
+
   // Model selection state variables
   const [selectedProviderState, setSelectedProviderState] = useState(providerParam);
   const [selectedModelState, setSelectedModelState] = useState(modelParam);
@@ -195,6 +223,10 @@ export default function RepoWikiPage() {
   const excludedFiles = searchParams.get('excluded_files') || '';
   const [modelExcludedDirs, setModelExcludedDirs] = useState(excludedDirs);
   const [modelExcludedFiles, setModelExcludedFiles] = useState(excludedFiles);
+
+  // Wiki type state - default to comprehensive view
+  const isComprehensiveParam = searchParams.get('comprehensive') !== 'false';
+  const [isComprehensiveView, setIsComprehensiveView] = useState(isComprehensiveParam);
   // Using useRef for activeContentRequests to maintain a single instance across renders
   // This map tracks which pages are currently being processed to prevent duplicate requests
   // Note: In a multi-threaded environment, additional synchronization would be needed,
@@ -207,8 +239,9 @@ export default function RepoWikiPage() {
   // Create a flag to ensure the effect only runs once
   const effectRan = React.useRef(false);
 
-  // State for Ask section visibility
-  const [isAskSectionVisible, setIsAskSectionVisible] = useState(true);
+  // State for Ask modal
+  const [isAskModalOpen, setIsAskModalOpen] = useState(false);
+  const askComponentRef = useRef<{ clearConversation: () => void } | null>(null);
 
   // Memoize repo info to avoid triggering updates in callbacks
 
@@ -268,64 +301,90 @@ export default function RepoWikiPage() {
         const repoUrl = getRepoUrl(repoInfo);
 
         // Create the prompt content - simplified to avoid message dialogs
-        const promptContent =
-`Generate comprehensive wiki page content for "${page.title}" in the repository ${owner}/${repo}.
+ const promptContent =
+`You are an expert technical writer and software architect.
+Your task is to generate a comprehensive and accurate technical wiki page in Markdown format about a specific feature, system, or module within a given software project.
 
-This page should focus on the following files:
-${filePaths.map(path => `- ${path}`).join('\n')}
+You will be given:
+1. The "[WIKI_PAGE_TOPIC]" for the page you need to create.
+2. A list of "[RELEVANT_SOURCE_FILES]" from the project that you MUST use as the sole basis for the content. You have access to the full content of these files. You MUST use AT LEAST 5 relevant source files for comprehensive coverage - if fewer are provided, search for additional related files in the codebase.
+
+CRITICAL STARTING INSTRUCTION:
+The very first thing on the page MUST be a \`<details>\` block listing ALL the \`[RELEVANT_SOURCE_FILES]\` you used to generate the content. There MUST be AT LEAST 5 source files listed - if fewer were provided, you MUST find additional related files to include.
+Format it exactly like this:
+<details>
+<summary>Relevant source files</summary>
+
+The following files were used as context for generating this wiki page:
+
+${filePaths.map(path => `- [${path}](${path})`).join('\n')}
+<!-- Add additional relevant files if fewer than 5 were provided -->
+</details>
+
+Immediately after the \`<details>\` block, the main title of the page should be a H1 Markdown heading: \`# ${page.title}\`.
+
+Based ONLY on the content of the \`[RELEVANT_SOURCE_FILES]\`:
+
+1.  **Introduction:** Start with a concise introduction (1-2 paragraphs) explaining the purpose, scope, and high-level overview of "${page.title}" within the context of the overall project. If relevant, and if information is available in the provided files, link to other potential wiki pages using the format \`[Link Text](#page-anchor-or-id)\`.
+
+2.  **Detailed Sections:** Break down "${page.title}" into logical sections using H2 (\`##\`) and H3 (\`###\`) Markdown headings. For each section:
+    *   Explain the architecture, components, data flow, or logic relevant to the section's focus, as evidenced in the source files.
+    *   Identify key functions, classes, data structures, API endpoints, or configuration elements pertinent to that section.
+
+3.  **Mermaid Diagrams:**
+    *   EXTENSIVELY use Mermaid diagrams (e.g., \`flowchart TD\`, \`sequenceDiagram\`, \`classDiagram\`, \`erDiagram\`, \`graph TD\`) to visually represent architectures, flows, relationships, and schemas found in the source files.
+    *   Ensure diagrams are accurate and directly derived from information in the \`[RELEVANT_SOURCE_FILES]\`.
+    *   Provide a brief explanation before or after each diagram to give context.
+    *   CRITICAL: All diagrams MUST follow strict vertical orientation:
+       - Use "graph TD" (top-down) directive for flow diagrams
+       - NEVER use "graph LR" (left-right)
+       - Maximum node width should be 3-4 words
+       - For sequence diagrams:
+         - Start with "sequenceDiagram" directive on its own line
+         - Define ALL participants at the beginning
+         - Use descriptive but concise participant names
+         - Use the correct arrow types:
+           - ->> for request/asynchronous messages
+           - -->> for response messages
+           - -x for failed messages
+         - Include activation boxes using +/- notation
+         - Add notes for clarification using "Note over" or "Note right of"
+
+4.  **Tables:**
+    *   Use Markdown tables to summarize information such as:
+        *   Key features or components and their descriptions.
+        *   API endpoint parameters, types, and descriptions.
+        *   Configuration options, their types, and default values.
+        *   Data model fields, types, constraints, and descriptions.
+
+5.  **Code Snippets:**
+    *   Include short, relevant code snippets (e.g., Python, Java, JavaScript, SQL, JSON, YAML) directly from the \`[RELEVANT_SOURCE_FILES]\` to illustrate key implementation details, data structures, or configurations.
+    *   Ensure snippets are well-formatted within Markdown code blocks with appropriate language identifiers.
+
+6.  **Source Citations (EXTREMELY IMPORTANT):**
+    *   For EVERY piece of significant information, explanation, diagram, table entry, or code snippet, you MUST cite the specific source file(s) and relevant line numbers from which the information was derived.
+    *   Place citations at the end of the paragraph, under the diagram/table, or after the code snippet.
+    *   Use the exact format: \`Sources: [filename.ext:start_line-end_line]()\` for a range, or \`Sources: [filename.ext:line_number]()\` for a single line. Multiple files can be cited: \`Sources: [file1.ext:1-10](), [file2.ext:5](), [dir/file3.ext]()\` (if the whole file is relevant and line numbers are not applicable or too broad).
+    *   If an entire section is overwhelmingly based on one or two files, you can cite them under the section heading in addition to more specific citations within the section.
+    *   IMPORTANT: You MUST cite AT LEAST 5 different source files throughout the wiki page to ensure comprehensive coverage.
+
+7.  **Technical Accuracy:** All information must be derived SOLELY from the \`[RELEVANT_SOURCE_FILES]\`. Do not infer, invent, or use external knowledge about similar systems or common practices unless it's directly supported by the provided code. If information is not present in the provided files, do not include it or explicitly state its absence if crucial to the topic.
+
+8.  **Clarity and Conciseness:** Use clear, professional, and concise technical language suitable for other developers working on or learning about the project. Avoid unnecessary jargon, but use correct technical terms where appropriate.
+
+9.  **Conclusion/Summary:** End with a brief summary paragraph if appropriate for "${page.title}", reiterating the key aspects covered and their significance within the project.
 
 IMPORTANT: Generate the content in ${language === 'en' ? 'English' :
             language === 'ja' ? 'Japanese (日本語)' :
             language === 'zh' ? 'Mandarin Chinese (中文)' :
-            language === 'es' ? 'Spanish (Español)' : 
-            language === 'kr' ? 'Korean (한국어)' : 
+            language === 'es' ? 'Spanish (Español)' :
+            language === 'kr' ? 'Korean (한국어)' :
             language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'} language.
 
-Include:
-- Clear introduction explaining what "${page.title}" is
-- Explanation of purpose and functionality
-- Code snippets when helpful (less than 20 lines)
-- At least one Mermaid diagram [Flow or Sequence] (use "graph TD" for vertical orientation)
-- Proper markdown formatting with code blocks and headings
-- Source links to relevant files: Eample: <p>Sources: <a href="https://github.com/AsyncFuncAI/deepwiki-open/blob/main/api/rag.py" target="_blank" rel="noopener noreferrer" class="mb-1 mr-1 inline-flex items-stretch font-mono text-xs !no-underline">SOURCE_DISPLAY</a></p>5. Explicitly explain how this component/feature integrates with the overall architecture
-
-
-Use proper markdown formatting for code blocks and include a vertical Mermaid diagram.
-
-### Mermaid Diagrams:
-1. MANDATORY: Include AT LEAST ONE relevant Mermaid diagram, most people prefer sequence diagrams if applicable.
-2. CRITICAL: All diagrams MUST follow strict vertical orientation:
-   - Use "graph TD" (top-down) directive for flow diagrams
-   - NEVER use "graph LR" (left-right)
-   - Maximum node width should be 3-4 words
-   - Example:
-     \`\`\`mermaid
-     graph TD
-       A[Start Process] --> B[Middle Step]
-       B --> C[End Result]
-     \`\`\`
-
-3. Flow Diagram Requirements:
-   - Use descriptive node IDs (e.g., UserAuth, DataProcess)
-   - ALL connections MUST use double dashes with arrows (-->)
-   - NEVER use single dash connections
-   - Add clear labels to connections when necessary: A -->|triggers| B
-   - Use appropriate node shapes based on type:
-     - Rectangle [Text] for components/modules
-     - Stadium ([Text]) for inputs/starting points
-     - Circle((Text)) for junction points
-     - Rhombus{Text} for decision points
-
-4. Sequence Diagram Requirements:
-   - Start with "sequenceDiagram" directive on its own line
-   - Define ALL participants at the beginning
-   - Use descriptive but concise participant names
-   - Use the correct arrow types:
-     - ->> for request/asynchronous messages
-     - -->> for response messages
-     - -x for failed messages
-   - Include activation boxes using +/- notation
-   - Add notes for clarification using "Note over" or "Note right of"
+Remember:
+- Ground every claim in the provided source files.
+- Prioritize accuracy and direct representation of the code's functionality and structure.
+- Structure the document logically for easy understanding by other developers.
 `;
 
         // Prepare request body
@@ -445,7 +504,7 @@ Use proper markdown formatting for code blocks and include a vertical Mermaid di
         type: repoInfo.type,
         messages: [{
           role: 'user',
-          content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
+content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
 
 1. The complete file tree of the project:
 <file_tree>
@@ -462,8 +521,8 @@ I want to create a wiki for this repository. Determine the most logical structur
 IMPORTANT: The wiki content will be generated in ${language === 'en' ? 'English' :
             language === 'ja' ? 'Japanese (日本語)' :
             language === 'zh' ? 'Mandarin Chinese (中文)' :
-            language === 'es' ? 'Spanish (Español)' : 
-            language === 'kr' ? 'Korean (한국어)' : 
+            language === 'es' ? 'Spanish (Español)' :
+            language === 'kr' ? 'Korean (한国語)' :
             language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'} language.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
@@ -474,6 +533,57 @@ When designing the wiki structure, include pages that would benefit from visual 
 - State machines
 - Class hierarchies
 
+${isComprehensiveView ? `
+Create a structured wiki with the following main sections:
+- Overview (general information about the project)
+- System Architecture (how the system is designed)
+- Core Features (key functionality)
+- Data Management/Flow: If applicable, how data is stored, processed, accessed, and managed (e.g., database schema, data pipelines, state management).
+- Frontend Components (UI elements, if applicable.)
+- Backend Systems (server-side components)
+- Model Integration (AI model connections)
+- Deployment/Infrastructure (how to deploy, what's the infrastructure like)
+- Extensibility & Customization: If the project architecture supports it, explain how to extend or customize its functionality (e.g., plugins, theming, custom modules, hooks).
+
+Each section should contain relevant pages. For example, the "Frontend Components" section might include pages for "Home Page", "Repository Wiki Page", "Ask Component", etc.
+
+Return your analysis in the following XML format:
+
+<wiki_structure>
+  <title>[Overall title for the wiki]</title>
+  <description>[Brief description of the repository]</description>
+  <sections>
+    <section id="section-1">
+      <title>[Section title]</title>
+      <pages>
+        <page_ref>page-1</page_ref>
+        <page_ref>page-2</page_ref>
+      </pages>
+      <subsections>
+        <section_ref>section-2</section_ref>
+      </subsections>
+    </section>
+    <!-- More sections as needed -->
+  </sections>
+  <pages>
+    <page id="page-1">
+      <title>[Page title]</title>
+      <description>[Brief description of what this page will cover]</description>
+      <importance>high|medium|low</importance>
+      <relevant_files>
+        <file_path>[Path to a relevant file]</file_path>
+        <!-- More file paths as needed -->
+      </relevant_files>
+      <related_pages>
+        <related>page-2</related>
+        <!-- More related page IDs as needed -->
+      </related_pages>
+      <parent_section>section-1</parent_section>
+    </page>
+    <!-- More pages as needed -->
+  </pages>
+</wiki_structure>
+` : `
 Return your analysis in the following XML format:
 
 <wiki_structure>
@@ -496,6 +606,7 @@ Return your analysis in the following XML format:
     <!-- More pages as needed -->
   </pages>
 </wiki_structure>
+`}
 
 IMPORTANT FORMATTING INSTRUCTIONS:
 - Return ONLY the valid XML structure specified above
@@ -505,11 +616,11 @@ IMPORTANT FORMATTING INSTRUCTIONS:
 - Start directly with <wiki_structure> and end with </wiki_structure>
 
 IMPORTANT:
-1. Create 4-6 pages that would make a comprehensive wiki for this repository
+1. Create ${isComprehensiveView ? '8-12' : '4-6'} pages that would make a ${isComprehensiveView ? 'comprehensive' : 'concise'} wiki for this repository
 2. Each page should focus on a specific aspect of the codebase (e.g., architecture, key features, setup)
 3. The relevant_files should be actual files from the repository that would be used to generate that page
 4. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters`
-        }] 
+        }]
       };
 
       // Add tokens if available
@@ -622,12 +733,67 @@ IMPORTANT:
         });
       });
 
+      // Extract sections if they exist in the XML
+      const sections: WikiSection[] = [];
+      const rootSections: string[] = [];
+
+      // Try to parse sections if we're in comprehensive view
+      if (isComprehensiveView) {
+        const sectionsEls = xmlDoc.querySelectorAll('section');
+
+        if (sectionsEls && sectionsEls.length > 0) {
+          // Process sections
+          sectionsEls.forEach(sectionEl => {
+            const id = sectionEl.getAttribute('id') || `section-${sections.length + 1}`;
+            const titleEl = sectionEl.querySelector('title');
+            const pageRefEls = sectionEl.querySelectorAll('page_ref');
+            const sectionRefEls = sectionEl.querySelectorAll('section_ref');
+
+            const title = titleEl ? titleEl.textContent || '' : '';
+            const pages: string[] = [];
+            const subsections: string[] = [];
+
+            pageRefEls.forEach(el => {
+              if (el.textContent) pages.push(el.textContent);
+            });
+
+            sectionRefEls.forEach(el => {
+              if (el.textContent) subsections.push(el.textContent);
+            });
+
+            sections.push({
+              id,
+              title,
+              pages,
+              subsections: subsections.length > 0 ? subsections : undefined
+            });
+
+            // Check if this is a root section (not referenced by any other section)
+            let isReferenced = false;
+            sectionsEls.forEach(otherSection => {
+              const otherSectionRefs = otherSection.querySelectorAll('section_ref');
+              otherSectionRefs.forEach(ref => {
+                if (ref.textContent === id) {
+                  isReferenced = true;
+                }
+              });
+            });
+
+            if (!isReferenced) {
+              rootSections.push(id);
+            }
+          });
+        }
+      }
+
       // Create wiki structure
       const wikiStructure: WikiStructure = {
         id: 'wiki',
         title,
         description,
-        pages
+        pages,
+        sections,
+        rootSections
       };
 
       setWikiStructure(wikiStructure);
@@ -709,7 +875,7 @@ IMPORTANT:
     } finally {
       setStructureRequestInProgress(false);
     }
-  }, [generatePageContent, token, repoInfo, pagesInProgress.size, structureRequestInProgress, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, messages.loading]);
+  }, [generatePageContent, token, repoInfo, pagesInProgress.size, structureRequestInProgress, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, messages.loading, isComprehensiveView]);
 
   // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
@@ -1059,10 +1225,7 @@ IMPORTANT:
     }
   }, [wikiStructure, generatedPages, repoInfo, language]);
 
-  // 显示模型选项
-  const handleRefreshWiki = useCallback(() => {
-    setShowModelOptions(true);
-  }, []);
+  // No longer needed as we use the modal directly
 
   const confirmRefresh = useCallback(async () => {
     setShowModelOptions(false);
@@ -1079,8 +1242,9 @@ IMPORTANT:
         model: selectedModelState,
         is_custom_model: isCustomSelectedModelState.toString(),
         custom_model: customSelectedModelState,
+        comprehensive: isComprehensiveView.toString(),
       });
-      
+
       // Add file filters configuration
       if (modelExcludedDirs) {
         params.append('excluded_dirs', modelExcludedDirs);
@@ -1112,7 +1276,7 @@ IMPORTANT:
     console.log('Refreshing wiki. Server cache will be overwritten upon new generation if not cleared.');
 
     // Clear the localStorage cache (if any remnants or if it was used before this change)
-    const localStorageCacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language);
+    const localStorageCacheKey = getCacheKey(repoInfo.owner, repoInfo.repo, repoInfo.type, language, isComprehensiveView);
     localStorage.removeItem(localStorageCacheKey);
 
     // Reset cache loaded flag
@@ -1135,14 +1299,14 @@ IMPORTANT:
     setRequestInProgress(false); // Assuming this flag should be reset
 
     // Explicitly trigger the data loading process again by re-invoking what the main useEffect does.
-    // This will first attempt to load from (now hopefully non-existent or soon-to-be-overwritten) server cache, 
+    // This will first attempt to load from (now hopefully non-existent or soon-to-be-overwritten) server cache,
     // then proceed to fetchRepositoryStructure if needed.
     // To ensure fetchRepositoryStructure is called if cache is somehow still there or to force a full refresh:
     // One option is to directly call fetchRepositoryStructure() if force refresh means bypassing cache check.
     // For now, we rely on the standard loadData flow initiated by resetting effectRan and dependencies.
     // This will re-trigger the main data loading useEffect.
     // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading, activeContentRequests, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles]);
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, messages.loading, activeContentRequests, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, isComprehensiveView]);
 
   // Start wiki generation when component mounts
   useEffect(() => {
@@ -1158,6 +1322,7 @@ IMPORTANT:
             repo: repoInfo.repo,
             repo_type: repoInfo.type,
             language: language,
+            comprehensive: isComprehensiveView.toString(),
           });
           const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
@@ -1165,9 +1330,126 @@ IMPORTANT:
             const cachedData = await response.json(); // Returns null if no cache
             if (cachedData && cachedData.wiki_structure && cachedData.generated_pages && Object.keys(cachedData.generated_pages).length > 0) {
               console.log('Using server-cached wiki data');
-              setWikiStructure(cachedData.wiki_structure);
+
+              // Ensure the cached structure has sections and rootSections
+              const cachedStructure = {
+                ...cachedData.wiki_structure,
+                sections: cachedData.wiki_structure.sections || [],
+                rootSections: cachedData.wiki_structure.rootSections || []
+              };
+
+              // If sections or rootSections are missing, create intelligent ones based on page titles
+              if (!cachedStructure.sections.length || !cachedStructure.rootSections.length) {
+                const pages = cachedStructure.pages;
+                const sections: WikiSection[] = [];
+                const rootSections: string[] = [];
+
+                // Group pages by common prefixes or categories
+                const pageClusters = new Map<string, WikiPage[]>();
+
+                // Define common categories that might appear in page titles
+                const categories = [
+                  { id: 'overview', title: 'Overview', keywords: ['overview', 'introduction', 'about'] },
+                  { id: 'architecture', title: 'Architecture', keywords: ['architecture', 'structure', 'design', 'system'] },
+                  { id: 'features', title: 'Core Features', keywords: ['feature', 'functionality', 'core'] },
+                  { id: 'components', title: 'Components', keywords: ['component', 'module', 'widget'] },
+                  { id: 'api', title: 'API', keywords: ['api', 'endpoint', 'service', 'server'] },
+                  { id: 'data', title: 'Data Flow', keywords: ['data', 'flow', 'pipeline', 'storage'] },
+                  { id: 'models', title: 'Models', keywords: ['model', 'ai', 'ml', 'integration'] },
+                  { id: 'ui', title: 'User Interface', keywords: ['ui', 'interface', 'frontend', 'page'] },
+                  { id: 'setup', title: 'Setup & Configuration', keywords: ['setup', 'config', 'installation', 'deploy'] }
+                ];
+
+                // Initialize clusters with empty arrays
+                categories.forEach(category => {
+                  pageClusters.set(category.id, []);
+                });
+
+                // Add an "Other" category for pages that don't match any category
+                pageClusters.set('other', []);
+
+                // Assign pages to categories based on title keywords
+                pages.forEach((page: WikiPage) => {
+                  const title = page.title.toLowerCase();
+                  let assigned = false;
+
+                  // Try to find a matching category
+                  for (const category of categories) {
+                    if (category.keywords.some(keyword => title.includes(keyword))) {
+                      pageClusters.get(category.id)?.push(page);
+                      assigned = true;
+                      break;
+                    }
+                  }
+
+                  // If no category matched, put in "Other"
+                  if (!assigned) {
+                    pageClusters.get('other')?.push(page);
+                  }
+                });
+
+                // Create sections for non-empty categories
+                for (const [categoryId, categoryPages] of pageClusters.entries()) {
+                  if (categoryPages.length > 0) {
+                    const category = categories.find(c => c.id === categoryId) ||
+                                    { id: categoryId, title: categoryId === 'other' ? 'Other' : categoryId.charAt(0).toUpperCase() + categoryId.slice(1) };
+
+                    const sectionId = `section-${categoryId}`;
+                    sections.push({
+                      id: sectionId,
+                      title: category.title,
+                      pages: categoryPages.map((p: WikiPage) => p.id)
+                    });
+                    rootSections.push(sectionId);
+
+                    // Update page parentId
+                    categoryPages.forEach((page: WikiPage) => {
+                      page.parentId = sectionId;
+                    });
+                  }
+                }
+
+                // If we still have no sections (unlikely), fall back to importance-based grouping
+                if (sections.length === 0) {
+                  const highImportancePages = pages.filter((p: WikiPage) => p.importance === 'high').map((p: WikiPage) => p.id);
+                  const mediumImportancePages = pages.filter((p: WikiPage) => p.importance === 'medium').map((p: WikiPage) => p.id);
+                  const lowImportancePages = pages.filter((p: WikiPage) => p.importance === 'low').map((p: WikiPage) => p.id);
+
+                  if (highImportancePages.length > 0) {
+                    sections.push({
+                      id: 'section-high',
+                      title: 'Core Components',
+                      pages: highImportancePages
+                    });
+                    rootSections.push('section-high');
+                  }
+
+                  if (mediumImportancePages.length > 0) {
+                    sections.push({
+                      id: 'section-medium',
+                      title: 'Key Features',
+                      pages: mediumImportancePages
+                    });
+                    rootSections.push('section-medium');
+                  }
+
+                  if (lowImportancePages.length > 0) {
+                    sections.push({
+                      id: 'section-low',
+                      title: 'Additional Information',
+                      pages: lowImportancePages
+                    });
+                    rootSections.push('section-low');
+                  }
+                }
+
+                cachedStructure.sections = sections;
+                cachedStructure.rootSections = rootSections;
+              }
+
+              setWikiStructure(cachedStructure);
               setGeneratedPages(cachedData.generated_pages);
-              setCurrentPageId(cachedData.wiki_structure.pages.length > 0 ? cachedData.wiki_structure.pages[0].id : undefined);
+              setCurrentPageId(cachedStructure.pages.length > 0 ? cachedStructure.pages[0].id : undefined);
               setIsLoading(false);
               setLoadingMessage(undefined);
               cacheLoadedSuccessfully.current = true;
@@ -1195,33 +1477,41 @@ IMPORTANT:
       console.log('Skipping duplicate repository fetch/cache check');
     }
 
-    // Clean up function for this effect is not strictly necessary for loadData, 
+    // Clean up function for this effect is not strictly necessary for loadData,
     // but keeping the main unmount cleanup in the other useEffect
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure, messages.loading?.fetchingCache]);
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, fetchRepositoryStructure, messages.loading?.fetchingCache, isComprehensiveView]);
 
   // Save wiki to server-side cache when generation is complete
   useEffect(() => {
     const saveCache = async () => {
-      if (!isLoading && 
-          !error && 
-          wikiStructure && 
+      if (!isLoading &&
+          !error &&
+          wikiStructure &&
           Object.keys(generatedPages).length > 0 &&
           Object.keys(generatedPages).length >= wikiStructure.pages.length &&
           !cacheLoadedSuccessfully.current) {
-        
-        const allPagesHaveContent = wikiStructure.pages.every(page => 
+
+        const allPagesHaveContent = wikiStructure.pages.every(page =>
           generatedPages[page.id] && generatedPages[page.id].content && generatedPages[page.id].content !== 'Loading...');
-        
+
         if (allPagesHaveContent) {
           console.log('Attempting to save wiki data to server cache via Next.js proxy');
-          
+
           try {
+            // Make sure wikiStructure has sections and rootSections
+            const structureToCache = {
+              ...wikiStructure,
+              sections: wikiStructure.sections || [],
+              rootSections: wikiStructure.rootSections || []
+            };
+
             const dataToCache = {
               owner: repoInfo.owner,
               repo: repoInfo.repo,
               repo_type: repoInfo.type,
               language: language,
-              wiki_structure: wikiStructure,
+              comprehensive: isComprehensiveView,
+              wiki_structure: structureToCache,
               generated_pages: generatedPages
             };
             const response = await fetch(`/api/wiki_cache`, {
@@ -1245,7 +1535,7 @@ IMPORTANT:
     };
 
     saveCache();
-  }, [isLoading, error, wikiStructure, generatedPages, repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+  }, [isLoading, error, wikiStructure, generatedPages, repoInfo.owner, repoInfo.repo, repoInfo.type, language, isComprehensiveView]);
 
   const handlePageSelect = (pageId: string) => {
     if (currentPageId != pageId) {
@@ -1259,7 +1549,7 @@ IMPORTANT:
     <div className="h-screen paper-texture p-4 md:p-8 flex flex-col">
       <style>{wikiStyles}</style>
 
-      <header className="max-w-6xl mx-auto mb-8 h-fit w-full">
+      <header className="max-w-[90%] xl:max-w-[1400px] mx-auto mb-8 h-fit w-full">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
             <Link href="/" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-1.5 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
@@ -1269,7 +1559,7 @@ IMPORTANT:
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto overflow-y-auto">
+      <main className="flex-1 max-w-[90%] xl:max-w-[1400px] mx-auto overflow-y-auto">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-8 bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
             <div className="relative mb-6">
@@ -1355,7 +1645,7 @@ IMPORTANT:
         ) : wikiStructure ? (
           <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
             {/* Wiki Navigation */}
-            <div className="h-full w-full lg:w-80 flex-shrink-0 bg-[var(--background)]/50 rounded-lg rounded-r-none p-5 border-b lg:border-b-0 lg:border-r border-[var(--border-color)] overflow-y-auto">
+            <div className="h-full w-full lg:w-[280px] xl:w-[320px] flex-shrink-0 bg-[var(--background)]/50 rounded-lg rounded-r-none p-5 border-b lg:border-b-0 lg:border-r border-[var(--border-color)] overflow-y-auto">
               <h3 className="text-lg font-bold text-[var(--foreground)] mb-3 font-serif">{wikiStructure.title}</h3>
               <p className="text-[var(--muted)] text-sm mb-5 leading-relaxed">{wikiStructure.description}</p>
 
@@ -1385,6 +1675,18 @@ IMPORTANT:
                     </a>
                   </>
                 )}
+              </div>
+
+              {/* Wiki Type Indicator */}
+              <div className="mb-3 flex items-center text-xs text-[var(--muted)]">
+                <span className="mr-2">Wiki Type:</span>
+                <span className={`px-2 py-0.5 rounded-full ${isComprehensiveView
+                  ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
+                  : 'bg-[var(--background)] text-[var(--foreground)] border border-[var(--border-color)]'}`}>
+                  {isComprehensiveView
+                    ? (messages.form?.comprehensive || 'Comprehensive')
+                    : (messages.form?.concise || 'Concise')}
+                </span>
               </div>
 
               {/* Refresh Wiki button */}
@@ -1434,56 +1736,25 @@ IMPORTANT:
               <h4 className="text-md font-semibold text-[var(--foreground)] mb-3 font-serif">
                 {messages.repoPage?.pages || 'Pages'}
               </h4>
-              <ul className="space-y-2">
-                {wikiStructure.pages.map(page => (
-                  <li key={page.id}>
-                    <button
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${currentPageId === page.id
-                          ? 'bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
-                          : 'text-[var(--foreground)] hover:bg-[var(--background)] border border-transparent'
-                        }`}
-                      onClick={() => handlePageSelect(page.id)}
-                    >
-                      <div className="flex items-center">
-                        <div className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${
-                          page.importance === 'high'
-                            ? 'bg-[#9b7cb9]'
-                            : page.importance === 'medium'
-                              ? 'bg-[#d7c4bb]'
-                              : 'bg-[#e8927c]'
-                        }`}></div>
-                        <span className="truncate">{page.title}</span>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <WikiTreeView
+                wikiStructure={wikiStructure}
+                currentPageId={currentPageId}
+                onPageSelect={handlePageSelect}
+                messages={messages.repoPage}
+              />
             </div>
 
             {/* Wiki Content */}
-            <div id="wiki-content" className="w-full flex-grow p-6 overflow-y-auto">
+            <div id="wiki-content" className="w-full flex-grow p-6 lg:p-8 overflow-y-auto">
               {currentPageId && generatedPages[currentPageId] ? (
-                <div>
+                <div className="max-w-[900px] xl:max-w-[1000px] mx-auto">
                   <h3 className="text-xl font-bold text-[var(--foreground)] mb-4 break-words font-serif">
                     {generatedPages[currentPageId].title}
                   </h3>
 
-                  {generatedPages[currentPageId].filePaths.length > 0 && (
-                    <div className="mb-5">
-                      <h4 className="text-sm font-semibold text-[var(--muted)] mb-2">
-                        {messages.repoPage?.relatedFiles || 'Related Files:'}
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {generatedPages[currentPageId].filePaths.map(path => (
-                          <span key={path} className="bg-[var(--background)]/70 text-xs text-[var(--foreground)] px-3 py-1.5 rounded-md truncate max-w-full border border-[var(--border-color)]">
-                            {path}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
-                  <div className="prose prose-sm max-w-none">
+
+                  <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
                     <Markdown
                       content={generatedPages[currentPageId].content}
                     />
@@ -1527,35 +1798,7 @@ IMPORTANT:
         ) : null}
       </main>
 
-      <footer className="max-w-6xl mx-auto mt-8 flex flex-col gap-4 w-full">
-        {/* Only show Ask component when wiki is successfully generated */}
-        {wikiStructure && Object.keys(generatedPages).length > 0 && !isLoading && (
-          <div className="w-full bg-[var(--card-bg)] rounded-lg p-5 mb-4 shadow-custom card-japanese">
-            <button
-              onClick={() => setIsAskSectionVisible(!isAskSectionVisible)}
-              className="w-full flex items-center justify-between text-left mb-3 text-sm font-serif text-[var(--foreground)] hover:text-[var(--accent-primary)] transition-colors"
-              aria-expanded={isAskSectionVisible}
-            >
-              {!isAskSectionVisible && (
-                <span>
-                  {messages.repoPage?.askAboutRepo || 'Ask questions about this repository'}
-                </span>
-              )}
-              {isAskSectionVisible && <span></span>}
-              {isAskSectionVisible ? <FaChevronUp /> : <FaChevronDown />}
-            </button>
-            {isAskSectionVisible && (
-              <Ask
-                repoInfo={repoInfo}
-                provider={selectedProviderState}
-                model={selectedModelState}
-                isCustomModel={isCustomSelectedModelState}
-                customModel={customSelectedModelState}
-                language={language}
-              />
-            )}
-          </div>
-        )}
+      <footer className="max-w-[90%] xl:max-w-[1400px] mx-auto mt-8 flex flex-col gap-4 w-full">
         <div className="flex justify-between items-center gap-4 text-center text-[var(--muted)] text-sm h-fit w-full bg-[var(--card-bg)] rounded-lg p-3 shadow-sm border border-[var(--border-color)]">
           <p className="flex-1 font-serif">
             {messages.footer?.copyright || 'DeepWiki - Generate Wiki from GitHub/Gitlab/Bitbucket repositories'}
@@ -1563,6 +1806,46 @@ IMPORTANT:
           <ThemeToggle />
         </div>
       </footer>
+
+      {/* Floating Chat Button */}
+      {!isLoading && wikiStructure && (
+        <button
+          onClick={() => setIsAskModalOpen(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--accent-primary)] text-white shadow-lg flex items-center justify-center hover:bg-[var(--accent-primary)]/90 transition-all z-50"
+          aria-label={messages.ask?.title || 'Ask about this repository'}
+        >
+          <FaComments className="text-xl" />
+        </button>
+      )}
+
+      {/* Ask Modal - Always render but conditionally show/hide */}
+      <div className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isAskModalOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-end p-3 absolute top-0 right-0 z-10">
+            <button
+              onClick={() => {
+                // Just close the modal without clearing the conversation
+                setIsAskModalOpen(false);
+              }}
+              className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors bg-[var(--card-bg)]/80 rounded-full p-2"
+              aria-label="Close"
+            >
+              <FaTimes className="text-xl" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <Ask
+              repoInfo={repoInfo}
+              provider={selectedProviderState}
+              model={selectedModelState}
+              isCustomModel={isCustomSelectedModelState}
+              customModel={customSelectedModelState}
+              language={language}
+              onRef={(ref) => (askComponentRef.current = ref)}
+            />
+          </div>
+        </div>
+      </div>
 
       <ModelSelectionModal
         isOpen={isModelSelectionModalOpen}
@@ -1575,6 +1858,8 @@ IMPORTANT:
         setIsCustomModel={setIsCustomSelectedModelState}
         customModel={customSelectedModelState}
         setCustomModel={setCustomSelectedModelState}
+        isComprehensiveView={isComprehensiveView}
+        setIsComprehensiveView={setIsComprehensiveView}
         showFileFilters={true}
         excludedDirs={modelExcludedDirs}
         setExcludedDirs={setModelExcludedDirs}
