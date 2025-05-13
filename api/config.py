@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from pathlib import Path
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +43,13 @@ def load_json_config(filename):
         else:
             # Otherwise use default directory
             config_path = Path(__file__).parent / "config" / filename
-            
+
         logger.info(f"Loading configuration from {config_path}")
-        
+
         if not config_path.exists():
             logger.warning(f"Configuration file {config_path} does not exist")
             return {}
-            
+
         with open(config_path, 'r') as f:
             return json.load(f)
     except Exception as e:
@@ -58,7 +59,7 @@ def load_json_config(filename):
 # Load generator model configuration
 def load_generator_config():
     generator_config = load_json_config("generator.json")
-    
+
     # Add client classes to each provider
     if "providers" in generator_config:
         for provider_id, provider_config in generator_config["providers"].items():
@@ -76,25 +77,66 @@ def load_generator_config():
                 provider_config["model_client"] = default_map[provider_id]
             else:
                 logger.warning(f"Unknown provider or client class: {provider_id}")
-    
+
     return generator_config
 
 # Load embedder configuration
 def load_embedder_config():
     embedder_config = load_json_config("embedder.json")
-    
+
     # Process client classes
     for key in ["embedder", "embedder_ollama"]:
         if key in embedder_config and "client_class" in embedder_config[key]:
             class_name = embedder_config[key]["client_class"]
             if class_name in CLIENT_CLASSES:
                 embedder_config[key]["model_client"] = CLIENT_CLASSES[class_name]
-    
+
     return embedder_config
 
 # Load repository and file filters configuration
 def load_repo_config():
     return load_json_config("repo.json")
+
+# Default excluded directories and files
+DEFAULT_EXCLUDED_DIRS: List[str] = [
+    # Virtual environments and package managers
+    "./.venv/", "./venv/", "./env/", "./virtualenv/",
+    "./node_modules/", "./bower_components/", "./jspm_packages/",
+    # Version control
+    "./.git/", "./.svn/", "./.hg/", "./.bzr/",
+    # Cache and compiled files
+    "./__pycache__/", "./.pytest_cache/", "./.mypy_cache/", "./.ruff_cache/", "./.coverage/",
+    # Build and distribution
+    "./dist/", "./build/", "./out/", "./target/", "./bin/", "./obj/",
+    # Documentation
+    "./docs/", "./_docs/", "./site-docs/", "./_site/",
+    # IDE specific
+    "./.idea/", "./.vscode/", "./.vs/", "./.eclipse/", "./.settings/",
+    # Logs and temporary files
+    "./logs/", "./log/", "./tmp/", "./temp/",
+]
+
+DEFAULT_EXCLUDED_FILES: List[str] = [
+    "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json", "poetry.lock",
+    "Pipfile.lock", "requirements.txt.lock", "Cargo.lock", "composer.lock",
+    ".lock", ".DS_Store", "Thumbs.db", "desktop.ini", "*.lnk", ".env",
+    ".env.*", "*.env", "*.cfg", "*.ini", ".flaskenv", ".gitignore",
+    ".gitattributes", ".gitmodules", ".github", ".gitlab-ci.yml",
+    ".prettierrc", ".eslintrc", ".eslintignore", ".stylelintrc",
+    ".editorconfig", ".jshintrc", ".pylintrc", ".flake8", "mypy.ini",
+    "pyproject.toml", "tsconfig.json", "webpack.config.js", "babel.config.js",
+    "rollup.config.js", "jest.config.js", "karma.conf.js", "vite.config.js",
+    "next.config.js", "*.min.js", "*.min.css", "*.bundle.js", "*.bundle.css",
+    "*.map", "*.gz", "*.zip", "*.tar", "*.tgz", "*.rar", "*.7z", "*.iso",
+    "*.dmg", "*.img", "*.msix", "*.appx", "*.appxbundle", "*.xap", "*.ipa",
+    "*.deb", "*.rpm", "*.msi", "*.exe", "*.dll", "*.so", "*.dylib", "*.o",
+    "*.obj", "*.jar", "*.war", "*.ear", "*.jsm", "*.class", "*.pyc", "*.pyd",
+    "*.pyo", "__pycache__", "*.a", "*.lib", "*.lo", "*.la", "*.slo", "*.dSYM",
+    "*.egg", "*.egg-info", "*.dist-info", "*.eggs", "node_modules",
+    "bower_components", "jspm_packages", "lib-cov", "coverage", "htmlcov",
+    ".nyc_output", ".tox", "dist", "build", "bld", "out", "bin", "target",
+    "packages/*/dist", "packages/*/build", ".output"
+]
 
 # Initialize empty configuration
 configs = {}
@@ -124,32 +166,32 @@ if repo_config:
 def get_model_config(provider="google", model=None):
     """
     Get configuration for the specified provider and model
-    
+
     Parameters:
         provider (str): Model provider ('google', 'openai', 'openrouter', 'ollama')
         model (str): Model name, or None to use default model
-    
+
     Returns:
         dict: Configuration containing model_client, model and other parameters
     """
     # Get provider configuration
     if "providers" not in configs:
         raise ValueError("Provider configuration not loaded")
-        
+
     provider_config = configs["providers"].get(provider)
     if not provider_config:
         raise ValueError(f"Configuration for provider '{provider}' not found")
-    
+
     model_client = provider_config.get("model_client")
     if not model_client:
         raise ValueError(f"Model client not specified for provider '{provider}'")
-    
+
     # If model not provided, use default model for the provider
     if not model:
         model = provider_config.get("default_model")
         if not model:
             raise ValueError(f"No default model specified for provider '{provider}'")
-    
+
     # Get model parameters (if present)
     model_params = {}
     if model in provider_config.get("models", {}):
@@ -157,21 +199,21 @@ def get_model_config(provider="google", model=None):
     else:
         default_model = provider_config.get("default_model")
         model_params = provider_config["models"][default_model]
-    
+
     # Prepare base configuration
     result = {
         "model_client": model_client,
     }
-    
+
     # Provider-specific adjustments
     if provider == "ollama":
         # Ollama uses a slightly different parameter structure
         if "options" in model_params:
-            result["model_kwargs"] = {"model": model, **model_params["options"]} 
+            result["model_kwargs"] = {"model": model, **model_params["options"]}
         else:
             result["model_kwargs"] = {"model": model}
     else:
         # Standard structure for other providers
         result["model_kwargs"] = {"model": model, **model_params}
-    
+
     return result
