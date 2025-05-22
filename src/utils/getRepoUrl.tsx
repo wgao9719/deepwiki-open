@@ -5,6 +5,13 @@ export default function getRepoUrl(repoInfo: RepoInfo): string {
   if (repoInfo.type === 'local' && repoInfo.localPath) {
     return repoInfo.localPath;
   } else {
-    return repoInfo.repoUrl || '';
+    if(repoInfo.repoUrl) {
+      return repoInfo.repoUrl;
+    } else {
+      if(repoInfo.owner && repoInfo.repo) {
+        return "http://example/" + repoInfo.owner + "/" + repoInfo.repo;
+      }
+      return '';
+    }
   }
 };

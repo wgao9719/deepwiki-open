@@ -250,6 +250,7 @@ const Ask: React.FC<AskProps> = ({
       // Prepare the request body
       const requestBody: ChatCompletionRequest = {
         repo_url: getRepoUrl(repoInfo),
+        type: repoInfo.type,
         messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
         provider: selectedProvider,
         model: isCustomSelectedModel ? customSelectedModel : selectedModel,
@@ -491,6 +492,7 @@ const Ask: React.FC<AskProps> = ({
       // Prepare request body
       const requestBody: ChatCompletionRequest = {
         repo_url: getRepoUrl(repoInfo),
+        type: repoInfo.type,
         messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
         provider: selectedProvider,
         model: isCustomSelectedModel ? customSelectedModel : selectedModel,
