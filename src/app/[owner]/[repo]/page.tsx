@@ -315,6 +315,7 @@ Format it exactly like this:
 <details>
 <summary>Relevant source files</summary>
 
+Remember, do not provide any acknowledgements, disclaimers, apologies, or any other preface before the \`<details>\` block. JUST START with the \`<details>\` block.
 The following files were used as context for generating this wiki page:
 
 ${filePaths.map(path => `- [${path}](${path})`).join('\n')}
@@ -401,40 +402,106 @@ Remember:
         // Add tokens if available
         addTokensToRequestBody(requestBody, token, repoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles);
 
-        const response = await fetch(`/api/chat/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'No error details available');
-          console.error(`API error (${response.status}): ${errorText}`);
-          throw new Error(`Error generating page content: ${response.status} - ${response.statusText}`);
-        }
-
-        // Process the response
+        // Use WebSocket for communication
         let content = '';
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) {
-          throw new Error('Failed to get response reader');
-        }
 
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            content += decoder.decode(value, { stream: true });
+          // Create WebSocket URL from the server base URL
+          const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+          const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
+          const wsUrl = `${wsBaseUrl}/ws/chat`;
+
+          // Create a new WebSocket connection
+          const ws = new WebSocket(wsUrl);
+
+          // Create a promise that resolves when the WebSocket connection is complete
+          await new Promise<void>((resolve, reject) => {
+            // Set up event handlers
+            ws.onopen = () => {
+              console.log(`WebSocket connection established for page: ${page.title}`);
+              // Send the request as JSON
+              ws.send(JSON.stringify(requestBody));
+              resolve();
+            };
+
+            ws.onerror = (error) => {
+              console.error('WebSocket error:', error);
+              reject(new Error('WebSocket connection failed'));
+            };
+
+            // If the connection doesn't open within 5 seconds, fall back to HTTP
+            const timeout = setTimeout(() => {
+              reject(new Error('WebSocket connection timeout'));
+            }, 5000);
+
+            // Clear the timeout if the connection opens successfully
+            ws.onopen = () => {
+              clearTimeout(timeout);
+              console.log(`WebSocket connection established for page: ${page.title}`);
+              // Send the request as JSON
+              ws.send(JSON.stringify(requestBody));
+              resolve();
+            };
+          });
+
+          // Create a promise that resolves when the WebSocket response is complete
+          await new Promise<void>((resolve, reject) => {
+            // Handle incoming messages
+            ws.onmessage = (event) => {
+              content += event.data;
+            };
+
+            // Handle WebSocket close
+            ws.onclose = () => {
+              console.log(`WebSocket connection closed for page: ${page.title}`);
+              resolve();
+            };
+
+            // Handle WebSocket errors
+            ws.onerror = (error) => {
+              console.error('WebSocket error during message reception:', error);
+              reject(new Error('WebSocket error during message reception'));
+            };
+          });
+        } catch (wsError) {
+          console.error('WebSocket error, falling back to HTTP:', wsError);
+
+          // Fall back to HTTP if WebSocket fails
+          const response = await fetch(`/api/chat/stream`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'No error details available');
+            console.error(`API error (${response.status}): ${errorText}`);
+            throw new Error(`Error generating page content: ${response.status} - ${response.statusText}`);
           }
-          // Ensure final decoding
-          content += decoder.decode();
-        } catch (readError) {
-          console.error('Error reading stream:', readError);
-          throw new Error('Error processing response stream');
+
+          // Process the response
+          content = '';
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+
+          if (!reader) {
+            throw new Error('Failed to get response reader');
+          }
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              content += decoder.decode(value, { stream: true });
+            }
+            // Ensure final decoding
+            content += decoder.decode();
+          } catch (readError) {
+            console.error('Error reading stream:', readError);
+            throw new Error('Error processing response stream');
+          }
         }
 
         // Clean up markdown delimiters
@@ -626,31 +693,97 @@ IMPORTANT:
       // Add tokens if available
       addTokensToRequestBody(requestBody, token, repoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles);
 
-      const response = await fetch(`/api/chat/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error determining wiki structure: ${response.status}`);
-      }
-
-      // Process the response
+      // Use WebSocket for communication
       let responseText = '';
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
 
-      if (!reader) {
-        throw new Error('Failed to get response reader');
-      }
+      try {
+        // Create WebSocket URL from the server base URL
+        const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+        const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws');
+        const wsUrl = `${wsBaseUrl}/ws/chat`;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        responseText += decoder.decode(value, { stream: true });
+        // Create a new WebSocket connection
+        const ws = new WebSocket(wsUrl);
+
+        // Create a promise that resolves when the WebSocket connection is complete
+        await new Promise<void>((resolve, reject) => {
+          // Set up event handlers
+          ws.onopen = () => {
+            console.log('WebSocket connection established for wiki structure');
+            // Send the request as JSON
+            ws.send(JSON.stringify(requestBody));
+            resolve();
+          };
+
+          ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            reject(new Error('WebSocket connection failed'));
+          };
+
+          // If the connection doesn't open within 5 seconds, fall back to HTTP
+          const timeout = setTimeout(() => {
+            reject(new Error('WebSocket connection timeout'));
+          }, 5000);
+
+          // Clear the timeout if the connection opens successfully
+          ws.onopen = () => {
+            clearTimeout(timeout);
+            console.log('WebSocket connection established for wiki structure');
+            // Send the request as JSON
+            ws.send(JSON.stringify(requestBody));
+            resolve();
+          };
+        });
+
+        // Create a promise that resolves when the WebSocket response is complete
+        await new Promise<void>((resolve, reject) => {
+          // Handle incoming messages
+          ws.onmessage = (event) => {
+            responseText += event.data;
+          };
+
+          // Handle WebSocket close
+          ws.onclose = () => {
+            console.log('WebSocket connection closed for wiki structure');
+            resolve();
+          };
+
+          // Handle WebSocket errors
+          ws.onerror = (error) => {
+            console.error('WebSocket error during message reception:', error);
+            reject(new Error('WebSocket error during message reception'));
+          };
+        });
+      } catch (wsError) {
+        console.error('WebSocket error, falling back to HTTP:', wsError);
+
+        // Fall back to HTTP if WebSocket fails
+        const response = await fetch(`/api/chat/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error determining wiki structure: ${response.status}`);
+        }
+
+        // Process the response
+        responseText = '';
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          throw new Error('Failed to get response reader');
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          responseText += decoder.decode(value, { stream: true });
+        }
       }
 
       // Clean up markdown delimiters

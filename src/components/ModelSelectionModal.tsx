@@ -27,6 +27,10 @@ interface ModelSelectionModalProps {
   setExcludedDirs?: (value: string) => void;
   excludedFiles?: string;
   setExcludedFiles?: (value: string) => void;
+  includedDirs?: string;
+  setIncludedDirs?: (value: string) => void;
+  includedFiles?: string;
+  setIncludedFiles?: (value: string) => void;
   showFileFilters?: boolean;
 }
 
@@ -48,6 +52,10 @@ export default function ModelSelectionModal({
   setExcludedDirs,
   excludedFiles = '',
   setExcludedFiles,
+  includedDirs = '',
+  setIncludedDirs,
+  includedFiles = '',
+  setIncludedFiles,
   showFileFilters = false
 }: ModelSelectionModalProps) {
   const { messages: t } = useLanguage();
@@ -60,6 +68,8 @@ export default function ModelSelectionModal({
   const [localIsComprehensiveView, setLocalIsComprehensiveView] = useState(isComprehensiveView);
   const [localExcludedDirs, setLocalExcludedDirs] = useState(excludedDirs);
   const [localExcludedFiles, setLocalExcludedFiles] = useState(excludedFiles);
+  const [localIncludedDirs, setLocalIncludedDirs] = useState(includedDirs);
+  const [localIncludedFiles, setLocalIncludedFiles] = useState(includedFiles);
 
   // Reset local state when modal is opened
   useEffect(() => {
@@ -71,8 +81,10 @@ export default function ModelSelectionModal({
       setLocalIsComprehensiveView(isComprehensiveView);
       setLocalExcludedDirs(excludedDirs);
       setLocalExcludedFiles(excludedFiles);
+      setLocalIncludedDirs(includedDirs);
+      setLocalIncludedFiles(includedFiles);
     }
-  }, [isOpen, provider, model, isCustomModel, customModel, isComprehensiveView, excludedDirs, excludedFiles]);
+  }, [isOpen, provider, model, isCustomModel, customModel, isComprehensiveView, excludedDirs, excludedFiles, includedDirs, includedFiles]);
 
   // Handler for applying changes
   const handleApply = () => {
@@ -83,6 +95,8 @@ export default function ModelSelectionModal({
     setIsComprehensiveView(localIsComprehensiveView);
     if (setExcludedDirs) setExcludedDirs(localExcludedDirs);
     if (setExcludedFiles) setExcludedFiles(localExcludedFiles);
+    if (setIncludedDirs) setIncludedDirs(localIncludedDirs);
+    if (setIncludedFiles) setIncludedFiles(localIncludedFiles);
     onApply();
     onClose();
   };
@@ -135,6 +149,10 @@ export default function ModelSelectionModal({
               setExcludedDirs={showFileFilters ? (value: string) => setLocalExcludedDirs(value) : undefined}
               excludedFiles={localExcludedFiles}
               setExcludedFiles={showFileFilters ? (value: string) => setLocalExcludedFiles(value) : undefined}
+              includedDirs={localIncludedDirs}
+              setIncludedDirs={showFileFilters ? (value: string) => setLocalIncludedDirs(value) : undefined}
+              includedFiles={localIncludedFiles}
+              setIncludedFiles={showFileFilters ? (value: string) => setLocalIncludedFiles(value) : undefined}
             />
           </div>
 

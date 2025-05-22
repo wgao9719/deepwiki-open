@@ -1,14 +1,12 @@
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from urllib.parse import unquote
 
 import google.generativeai as genai
 from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel, Field
 
 from api.config import get_model_config
@@ -32,21 +30,6 @@ if google_api_key:
     genai.configure(api_key=google_api_key)
 else:
     logger.warning("GOOGLE_API_KEY not found in environment variables")
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Simple Chat API",
-    description="Simplified API for streaming chat completions"
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
 
 # Models for the API
 class ChatMessage(BaseModel):
@@ -73,10 +56,18 @@ class ChatCompletionRequest(BaseModel):
     included_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to include exclusively")
     included_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to include exclusively")
 
-@app.post("/chat/completions/stream")
-async def chat_completions_stream(request: ChatCompletionRequest):
-    """Stream a chat completion response directly using Google Generative AI"""
+async def handle_websocket_chat(websocket: WebSocket):
+    """
+    Handle WebSocket connection for chat completions.
+    This replaces the HTTP streaming endpoint with a WebSocket connection.
+    """
+    await websocket.accept()
+
     try:
+        # Receive and parse the request data
+        request_data = await websocket.receive_json()
+        request = ChatCompletionRequest(**request_data)
+
         # Check if request contains very large input
         input_too_large = False
         if request.messages and len(request.messages) > 0:
@@ -116,25 +107,35 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         except ValueError as e:
             if "No valid documents with embeddings found" in str(e):
                 logger.error(f"No valid embeddings found: {str(e)}")
-                raise HTTPException(status_code=500, detail="No valid document embeddings found. This may be due to embedding size inconsistencies or API errors during document processing. Please try again or check your repository content.")
+                await websocket.send_text("Error: No valid document embeddings found. This may be due to embedding size inconsistencies or API errors during document processing. Please try again or check your repository content.")
+                await websocket.close()
+                return
             else:
                 logger.error(f"ValueError preparing retriever: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
+                await websocket.send_text(f"Error preparing retriever: {str(e)}")
+                await websocket.close()
+                return
         except Exception as e:
             logger.error(f"Error preparing retriever: {str(e)}")
             # Check for specific embedding-related errors
             if "All embeddings should be of the same size" in str(e):
-                raise HTTPException(status_code=500, detail="Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
+                await websocket.send_text("Error: Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
             else:
-                raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
+                await websocket.send_text(f"Error preparing retriever: {str(e)}")
+            await websocket.close()
+            return
 
         # Validate request
         if not request.messages or len(request.messages) == 0:
-            raise HTTPException(status_code=400, detail="No messages provided")
+            await websocket.send_text("Error: No messages provided")
+            await websocket.close()
+            return
 
         last_message = request.messages[-1]
         if last_message.role != "user":
-            raise HTTPException(status_code=400, detail="Last message must be from the user")
+            await websocket.send_text("Error: Last message must be from the user")
+            await websocket.close()
+            return
 
         # Process previous messages to build conversation history
         for i in range(0, len(request.messages) - 1, 2):
@@ -511,78 +512,109 @@ This file contains...
                 }
             )
 
-        # Create a streaming response
-        async def response_stream():
-            try:
-                if request.provider == "ollama":
+        # Process the response based on the provider
+        try:
+            if request.provider == "ollama":
+                # Get the response and handle it properly using the previously created api_kwargs
+                response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                # Handle streaming response from Ollama
+                async for chunk in response:
+                    text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
+                    if text and not text.startswith('model=') and not text.startswith('created_at='):
+                        text = text.replace('<think>', '').replace('</think>', '')
+                        await websocket.send_text(text)
+                # Explicitly close the WebSocket connection after the response is complete
+                await websocket.close()
+            elif request.provider == "openrouter":
+                try:
                     # Get the response and handle it properly using the previously created api_kwargs
+                    logger.info("Making OpenRouter API call")
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                    # Handle streaming response from Ollama
+                    # Handle streaming response from OpenRouter
                     async for chunk in response:
-                        text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
-                        if text and not text.startswith('model=') and not text.startswith('created_at='):
-                            text = text.replace('<think>', '').replace('</think>', '')
-                            yield text
-                elif request.provider == "openrouter":
-                    try:
-                        # Get the response and handle it properly using the previously created api_kwargs
-                        logger.info("Making OpenRouter API call")
-                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from OpenRouter
-                        async for chunk in response:
-                            yield chunk
-                    except Exception as e_openrouter:
-                        logger.error(f"Error with OpenRouter API: {str(e_openrouter)}")
-                        yield f"\nError with OpenRouter API: {str(e_openrouter)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
-                elif request.provider == "openai":
-                    try:
-                        # Get the response and handle it properly using the previously created api_kwargs
-                        logger.info("Making Openai API call")
-                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from Openai
-                        async for chunk in response:
-                           choices = getattr(chunk, "choices", [])
-                           if len(choices) > 0:
-                               delta = getattr(choices[0], "delta", None)
-                               if delta is not None:
-                                    text = getattr(delta, "content", None)
-                                    if text is not None:
-                                        yield text
-                    except Exception as e_openai:
-                        logger.error(f"Error with Openai API: {str(e_openai)}")
-                        yield f"\nError with Openai API: {str(e_openai)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
-                else:
-                    # Generate streaming response
-                    response = model.generate_content(prompt, stream=True)
-                    # Stream the response
-                    for chunk in response:
-                        if hasattr(chunk, 'text'):
-                            yield chunk.text
+                        await websocket.send_text(chunk)
+                    # Explicitly close the WebSocket connection after the response is complete
+                    await websocket.close()
+                except Exception as e_openrouter:
+                    logger.error(f"Error with OpenRouter API: {str(e_openrouter)}")
+                    error_msg = f"\nError with OpenRouter API: {str(e_openrouter)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
+                    await websocket.send_text(error_msg)
+                    # Close the WebSocket connection after sending the error message
+                    await websocket.close()
+            elif request.provider == "openai":
+                try:
+                    # Get the response and handle it properly using the previously created api_kwargs
+                    logger.info("Making Openai API call")
+                    response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                    # Handle streaming response from Openai
+                    async for chunk in response:
+                        choices = getattr(chunk, "choices", [])
+                        if len(choices) > 0:
+                            delta = getattr(choices[0], "delta", None)
+                            if delta is not None:
+                                text = getattr(delta, "content", None)
+                                if text is not None:
+                                    await websocket.send_text(text)
+                    # Explicitly close the WebSocket connection after the response is complete
+                    await websocket.close()
+                except Exception as e_openai:
+                    logger.error(f"Error with Openai API: {str(e_openai)}")
+                    error_msg = f"\nError with Openai API: {str(e_openai)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
+                    await websocket.send_text(error_msg)
+                    # Close the WebSocket connection after sending the error message
+                    await websocket.close()
+            else:
+                # Generate streaming response
+                response = model.generate_content(prompt, stream=True)
+                # Stream the response
+                for chunk in response:
+                    if hasattr(chunk, 'text'):
+                        await websocket.send_text(chunk.text)
+                # Explicitly close the WebSocket connection after the response is complete
+                await websocket.close()
 
-            except Exception as e_outer:
-                logger.error(f"Error in streaming response: {str(e_outer)}")
-                error_message = str(e_outer)
+        except Exception as e_outer:
+            logger.error(f"Error in streaming response: {str(e_outer)}")
+            error_message = str(e_outer)
 
-                # Check for token limit errors
-                if "maximum context length" in error_message or "token limit" in error_message or "too many tokens" in error_message:
-                    # If we hit a token limit error, try again without context
-                    logger.warning("Token limit exceeded, retrying without context")
-                    try:
-                        # Create a simplified prompt without context
-                        simplified_prompt = f"/no_think {system_prompt}\n\n"
-                        if conversation_history:
-                            simplified_prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
+            # Check for token limit errors
+            if "maximum context length" in error_message or "token limit" in error_message or "too many tokens" in error_message:
+                # If we hit a token limit error, try again without context
+                logger.warning("Token limit exceeded, retrying without context")
+                try:
+                    # Create a simplified prompt without context
+                    simplified_prompt = f"/no_think {system_prompt}\n\n"
+                    if conversation_history:
+                        simplified_prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-                        # Include file content in the fallback prompt if it was retrieved
-                        if request.filePath and file_content:
-                            simplified_prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
+                    # Include file content in the fallback prompt if it was retrieved
+                    if request.filePath and file_content:
+                        simplified_prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-                        simplified_prompt += "<note>Answering without retrieval augmentation due to input size constraints.</note>\n\n"
-                        simplified_prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
+                    simplified_prompt += "<note>Answering without retrieval augmentation due to input size constraints.</note>\n\n"
+                    simplified_prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
-                        if request.provider == "ollama":
-                            simplified_prompt += " /no_think"
+                    if request.provider == "ollama":
+                        simplified_prompt += " /no_think"
 
+                        # Create new api_kwargs with the simplified prompt
+                        fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                            input=simplified_prompt,
+                            model_kwargs=model_kwargs,
+                            model_type=ModelType.LLM
+                        )
+
+                        # Get the response using the simplified prompt
+                        fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                        # Handle streaming fallback_response from Ollama
+                        async for chunk in fallback_response:
+                            text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
+                            if text and not text.startswith('model=') and not text.startswith('created_at='):
+                                text = text.replace('<think>', '').replace('</think>', '')
+                                await websocket.send_text(text)
+                    elif request.provider == "openrouter":
+                        try:
                             # Create new api_kwargs with the simplified prompt
                             fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
                                 input=simplified_prompt,
@@ -591,89 +623,72 @@ This file contains...
                             )
 
                             # Get the response using the simplified prompt
+                            logger.info("Making fallback OpenRouter API call")
                             fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-                            # Handle streaming fallback_response from Ollama
+                            # Handle streaming fallback_response from OpenRouter
                             async for chunk in fallback_response:
-                                text = getattr(chunk, 'response', None) or getattr(chunk, 'text', None) or str(chunk)
-                                if text and not text.startswith('model=') and not text.startswith('created_at='):
-                                    text = text.replace('<think>', '').replace('</think>', '')
-                                    yield text
-                        elif request.provider == "openrouter":
-                            try:
-                                # Create new api_kwargs with the simplified prompt
-                                fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
-                                    input=simplified_prompt,
-                                    model_kwargs=model_kwargs,
-                                    model_type=ModelType.LLM
-                                )
-
-                                # Get the response using the simplified prompt
-                                logger.info("Making fallback OpenRouter API call")
-                                fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
-
-                                # Handle streaming fallback_response from OpenRouter
-                                async for chunk in fallback_response:
-                                    yield chunk
-                            except Exception as e_fallback:
-                                logger.error(f"Error with OpenRouter API fallback: {str(e_fallback)}")
-                                yield f"\nError with OpenRouter API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
-                        elif request.provider == "openai":
-                            try:
-                                # Create new api_kwargs with the simplified prompt
-                                fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
-                                    input=simplified_prompt,
-                                    model_kwargs=model_kwargs,
-                                    model_type=ModelType.LLM
-                                )
-
-                                # Get the response using the simplified prompt
-                                logger.info("Making fallback Openai API call")
-                                fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
-
-                                # Handle streaming fallback_response from Openai
-                                async for chunk in fallback_response:
-                                    text = chunk if isinstance(chunk, str) else getattr(chunk, 'text', str(chunk))
-                                    yield text
-                            except Exception as e_fallback:
-                                logger.error(f"Error with Openai API fallback: {str(e_fallback)}")
-                                yield f"\nError with Openai API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
-                        else:
-                            # Initialize Google Generative AI model
-                            model_config = get_model_config(request.provider, request.model)
-                            fallback_model = genai.GenerativeModel(
-                                model_name=model_config["model"],
-                                generation_config={
-                                    "temperature": model_config["model_kwargs"].get("temperature", 0.7),
-                                    "top_p": model_config["model_kwargs"].get("top_p", 0.8),
-                                    "top_k": model_config["model_kwargs"].get("top_k", 40)
-                                }
+                                await websocket.send_text(chunk)
+                        except Exception as e_fallback:
+                            logger.error(f"Error with OpenRouter API fallback: {str(e_fallback)}")
+                            error_msg = f"\nError with OpenRouter API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
+                            await websocket.send_text(error_msg)
+                    elif request.provider == "openai":
+                        try:
+                            # Create new api_kwargs with the simplified prompt
+                            fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                input=simplified_prompt,
+                                model_kwargs=model_kwargs,
+                                model_type=ModelType.LLM
                             )
 
-                            # Get streaming response using simplified prompt
-                            fallback_response = fallback_model.generate_content(simplified_prompt, stream=True)
-                            # Stream the fallback response
-                            for chunk in fallback_response:
-                                if hasattr(chunk, 'text'):
-                                    yield chunk.text
-                    except Exception as e2:
-                        logger.error(f"Error in fallback streaming response: {str(e2)}")
-                        yield f"\nI apologize, but your request is too large for me to process. Please try a shorter query or break it into smaller parts."
-                else:
-                    # For other errors, return the error message
-                    yield f"\nError: {error_message}"
+                            # Get the response using the simplified prompt
+                            logger.info("Making fallback Openai API call")
+                            fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
 
-        # Return streaming response
-        return StreamingResponse(response_stream(), media_type="text/event-stream")
+                            # Handle streaming fallback_response from Openai
+                            async for chunk in fallback_response:
+                                text = chunk if isinstance(chunk, str) else getattr(chunk, 'text', str(chunk))
+                                await websocket.send_text(text)
+                        except Exception as e_fallback:
+                            logger.error(f"Error with Openai API fallback: {str(e_fallback)}")
+                            error_msg = f"\nError with Openai API fallback: {str(e_fallback)}\n\nPlease check that you have set the OPENAI_API_KEY environment variable with a valid API key."
+                            await websocket.send_text(error_msg)
+                    else:
+                        # Initialize Google Generative AI model
+                        model_config = get_model_config(request.provider, request.model)
+                        fallback_model = genai.GenerativeModel(
+                            model_name=model_config["model"],
+                            generation_config={
+                                "temperature": model_config["model_kwargs"].get("temperature", 0.7),
+                                "top_p": model_config["model_kwargs"].get("top_p", 0.8),
+                                "top_k": model_config["model_kwargs"].get("top_k", 40)
+                            }
+                        )
 
-    except HTTPException:
-        raise
-    except Exception as e_handler:
-        error_msg = f"Error in streaming chat completion: {str(e_handler)}"
-        logger.error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
+                        # Get streaming response using simplified prompt
+                        fallback_response = fallback_model.generate_content(simplified_prompt, stream=True)
+                        # Stream the fallback response
+                        for chunk in fallback_response:
+                            if hasattr(chunk, 'text'):
+                                await websocket.send_text(chunk.text)
+                except Exception as e2:
+                    logger.error(f"Error in fallback streaming response: {str(e2)}")
+                    await websocket.send_text(f"\nI apologize, but your request is too large for me to process. Please try a shorter query or break it into smaller parts.")
+                    # Close the WebSocket connection after sending the error message
+                    await websocket.close()
+            else:
+                # For other errors, return the error message
+                await websocket.send_text(f"\nError: {error_message}")
+                # Close the WebSocket connection after sending the error message
+                await websocket.close()
 
-@app.get("/")
-async def root():
-    """Root endpoint to check if the API is running"""
-    return {"status": "API is running", "message": "Navigate to /docs for API documentation"}
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Error in WebSocket handler: {str(e)}")
+        try:
+            await websocket.send_text(f"Error: {str(e)}")
+            await websocket.close()
+        except:
+            pass

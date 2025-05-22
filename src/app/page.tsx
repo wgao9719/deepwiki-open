@@ -85,6 +85,8 @@ export default function Home() {
 
   const [excludedDirs, setExcludedDirs] = useState('');
   const [excludedFiles, setExcludedFiles] = useState('');
+  const [includedDirs, setIncludedDirs] = useState('');
+  const [includedFiles, setIncludedFiles] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState<'github' | 'gitlab' | 'bitbucket'>('github');
   const [accessToken, setAccessToken] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +224,12 @@ export default function Home() {
     if (excludedFiles) {
       params.append('excluded_files', excludedFiles);
     }
+    if (includedDirs) {
+      params.append('included_dirs', includedDirs);
+    }
+    if (includedFiles) {
+      params.append('included_files', includedFiles);
+    }
 
     // Add language parameter
     params.append('language', selectedLanguage);
@@ -312,6 +320,10 @@ export default function Home() {
             setExcludedDirs={setExcludedDirs}
             excludedFiles={excludedFiles}
             setExcludedFiles={setExcludedFiles}
+            includedDirs={includedDirs}
+            setIncludedDirs={setIncludedDirs}
+            includedFiles={includedFiles}
+            setIncludedFiles={setIncludedFiles}
             onSubmit={handleGenerateWiki}
             isSubmitting={isSubmitting}
           />

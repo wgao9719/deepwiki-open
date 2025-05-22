@@ -4,9 +4,17 @@ import { NextRequest, NextResponse } from 'next/server';
 // This should match the logic in your frontend's page.tsx for consistency.
 const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:8001';
 
+// This is a fallback HTTP implementation that will be used if WebSockets are not available
+// or if there's an error with the WebSocket connection
 export async function POST(req: NextRequest) {
   try {
     const requestBody = await req.json(); // Assuming the frontend sends JSON
+
+    // Note: This endpoint now uses the HTTP fallback instead of WebSockets
+    // The WebSocket implementation is in src/utils/websocketClient.ts
+    // This HTTP endpoint is kept for backward compatibility
+    console.log('Using HTTP fallback for chat completion instead of WebSockets');
+
     const targetUrl = `${TARGET_SERVER_BASE_URL}/chat/completions/stream`;
 
     // Make the actual request to the backend service
@@ -15,8 +23,6 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream', // Indicate that we expect a stream
-        // TODO: Consider forwarding other relevant headers from the original request (req.headers) if needed,
-        // for example, an Authorization header.
       },
       body: JSON.stringify(requestBody),
     });
@@ -62,10 +68,6 @@ export async function POST(req: NextRequest) {
       },
       cancel(reason) {
         console.log('Client cancelled stream request:', reason);
-        // If the client cancels (e.g., navigates away), we might want to signal the backend.
-        // This can be complex. For fetch, an AbortController initiated with the fetch call
-        // could be aborted here. For now, we just log and the reader loop will terminate.
-        // reader.cancel() could also be called if the underlying stream supports it.
       }
     });
 
@@ -78,7 +80,6 @@ export async function POST(req: NextRequest) {
     }
     // It's good practice for streams not to be cached or transformed by intermediaries.
     responseHeaders.set('Cache-Control', 'no-cache, no-transform');
-    // 'Transfer-Encoding': 'chunked' is typically handled by the server/Next.js automatically for streams.
 
     return new NextResponse(stream, {
       status: backendResponse.status, // Should be 200 for a successful stream start
@@ -109,4 +110,4 @@ export async function OPTIONS() {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization', // Adjust as per client's request headers
     },
   });
-} 
+}

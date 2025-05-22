@@ -227,7 +227,7 @@ class RAG(adal.Component):
             embedder_config = configs["embedder_ollama"]
         else:
             embedder_config = configs["embedder"]
-        
+
         # --- Initialize Embedder ---
         self.embedder = adal.Embedder(
             model_client=embedder_config["model_client"](),
@@ -287,8 +287,103 @@ IMPORTANT FORMATTING RULES:
         self.db_manager = DatabaseManager()
         self.transformed_docs = []
 
-    def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None, 
-                      excluded_dirs: List[str] = None, excluded_files: List[str] = None):
+    def _validate_and_filter_embeddings(self, documents: List) -> List:
+        """
+        Validate embeddings and filter out documents with invalid or mismatched embedding sizes.
+
+        Args:
+            documents: List of documents with embeddings
+
+        Returns:
+            List of documents with valid embeddings of consistent size
+        """
+        if not documents:
+            logger.warning("No documents provided for embedding validation")
+            return []
+
+        valid_documents = []
+        embedding_sizes = {}
+
+        # First pass: collect all embedding sizes and count occurrences
+        for i, doc in enumerate(documents):
+            if not hasattr(doc, 'vector') or doc.vector is None:
+                logger.warning(f"Document {i} has no embedding vector, skipping")
+                continue
+
+            try:
+                if isinstance(doc.vector, list):
+                    embedding_size = len(doc.vector)
+                elif hasattr(doc.vector, 'shape'):
+                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                elif hasattr(doc.vector, '__len__'):
+                    embedding_size = len(doc.vector)
+                else:
+                    logger.warning(f"Document {i} has invalid embedding vector type: {type(doc.vector)}, skipping")
+                    continue
+
+                if embedding_size == 0:
+                    logger.warning(f"Document {i} has empty embedding vector, skipping")
+                    continue
+
+                embedding_sizes[embedding_size] = embedding_sizes.get(embedding_size, 0) + 1
+
+            except Exception as e:
+                logger.warning(f"Error checking embedding size for document {i}: {str(e)}, skipping")
+                continue
+
+        if not embedding_sizes:
+            logger.error("No valid embeddings found in any documents")
+            return []
+
+        # Find the most common embedding size (this should be the correct one)
+        target_size = max(embedding_sizes.keys(), key=lambda k: embedding_sizes[k])
+        logger.info(f"Target embedding size: {target_size} (found in {embedding_sizes[target_size]} documents)")
+
+        # Log all embedding sizes found
+        for size, count in embedding_sizes.items():
+            if size != target_size:
+                logger.warning(f"Found {count} documents with incorrect embedding size {size}, will be filtered out")
+
+        # Second pass: filter documents with the target embedding size
+        for i, doc in enumerate(documents):
+            if not hasattr(doc, 'vector') or doc.vector is None:
+                continue
+
+            try:
+                if isinstance(doc.vector, list):
+                    embedding_size = len(doc.vector)
+                elif hasattr(doc.vector, 'shape'):
+                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                elif hasattr(doc.vector, '__len__'):
+                    embedding_size = len(doc.vector)
+                else:
+                    continue
+
+                if embedding_size == target_size:
+                    valid_documents.append(doc)
+                else:
+                    # Log which document is being filtered out
+                    file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
+                    logger.warning(f"Filtering out document '{file_path}' due to embedding size mismatch: {embedding_size} != {target_size}")
+
+            except Exception as e:
+                file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
+                logger.warning(f"Error validating embedding for document '{file_path}': {str(e)}, skipping")
+                continue
+
+        logger.info(f"Embedding validation complete: {len(valid_documents)}/{len(documents)} documents have valid embeddings")
+
+        if len(valid_documents) == 0:
+            logger.error("No documents with valid embeddings remain after filtering")
+        elif len(valid_documents) < len(documents):
+            filtered_count = len(documents) - len(valid_documents)
+            logger.warning(f"Filtered out {filtered_count} documents due to embedding issues")
+
+        return valid_documents
+
+    def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None,
+                      excluded_dirs: List[str] = None, excluded_files: List[str] = None,
+                      included_dirs: List[str] = None, included_files: List[str] = None):
         """
         Prepare the retriever for a repository.
         Will load database from local storage if available.
@@ -298,26 +393,63 @@ IMPORTANT FORMATTING RULES:
             access_token: Optional access token for private repositories
             excluded_dirs: Optional list of directories to exclude from processing
             excluded_files: Optional list of file patterns to exclude from processing
+            included_dirs: Optional list of directories to include exclusively
+            included_files: Optional list of file patterns to include exclusively
         """
         self.initialize_db_manager()
         self.repo_url_or_path = repo_url_or_path
         self.transformed_docs = self.db_manager.prepare_database(
-            repo_url_or_path, 
-            type, 
-            access_token, 
+            repo_url_or_path,
+            type,
+            access_token,
             local_ollama=self.local_ollama,
             excluded_dirs=excluded_dirs,
-            excluded_files=excluded_files
+            excluded_files=excluded_files,
+            included_dirs=included_dirs,
+            included_files=included_files
         )
         logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
-        retreive_embedder = self.query_embedder if self.local_ollama else self.embedder
-        self.retriever = FAISSRetriever(
-            **configs["retriever"],
-            embedder=retreive_embedder,
-            documents=self.transformed_docs,
-            document_map_func=lambda doc: doc.vector,
-        )
+        # Validate and filter embeddings to ensure consistent sizes
+        self.transformed_docs = self._validate_and_filter_embeddings(self.transformed_docs)
+
+        if not self.transformed_docs:
+            raise ValueError("No valid documents with embeddings found. Cannot create retriever.")
+
+        logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
+
+        try:
+            retreive_embedder = self.query_embedder if self.local_ollama else self.embedder
+            self.retriever = FAISSRetriever(
+                **configs["retriever"],
+                embedder=retreive_embedder,
+                documents=self.transformed_docs,
+                document_map_func=lambda doc: doc.vector,
+            )
+            logger.info("FAISS retriever created successfully")
+        except Exception as e:
+            logger.error(f"Error creating FAISS retriever: {str(e)}")
+            # Try to provide more specific error information
+            if "All embeddings should be of the same size" in str(e):
+                logger.error("Embedding size validation failed. This suggests there are still inconsistent embedding sizes.")
+                # Log embedding sizes for debugging
+                sizes = []
+                for i, doc in enumerate(self.transformed_docs[:10]):  # Check first 10 docs
+                    if hasattr(doc, 'vector') and doc.vector is not None:
+                        try:
+                            if isinstance(doc.vector, list):
+                                size = len(doc.vector)
+                            elif hasattr(doc.vector, 'shape'):
+                                size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                            elif hasattr(doc.vector, '__len__'):
+                                size = len(doc.vector)
+                            else:
+                                size = "unknown"
+                            sizes.append(f"doc_{i}: {size}")
+                        except:
+                            sizes.append(f"doc_{i}: error")
+                logger.error(f"Sample embedding sizes: {', '.join(sizes)}")
+            raise
 
     def call(self, query: str, language: str = "en") -> Tuple[List]:
         """

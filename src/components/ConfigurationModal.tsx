@@ -6,18 +6,18 @@ import UserSelector from './UserSelector';
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  
+
   // Repository input
   repositoryInput: string;
-  
+
   // Language selection
   selectedLanguage: string;
   setSelectedLanguage: (value: string) => void;
-  
+
   // Wiki type options
   isComprehensiveView: boolean;
   setIsComprehensiveView: (value: boolean) => void;
-  
+
   // Model selection
   provider: string;
   setProvider: (value: string) => void;
@@ -27,21 +27,25 @@ interface ConfigurationModalProps {
   setIsCustomModel: (value: boolean) => void;
   customModel: string;
   setCustomModel: (value: string) => void;
-  
+
   // Platform selection
   selectedPlatform: 'github' | 'gitlab' | 'bitbucket';
   setSelectedPlatform: (value: 'github' | 'gitlab' | 'bitbucket') => void;
-  
+
   // Access token
   accessToken: string;
   setAccessToken: (value: string) => void;
-  
+
   // File filter options
   excludedDirs: string;
   setExcludedDirs: (value: string) => void;
   excludedFiles: string;
   setExcludedFiles: (value: string) => void;
-  
+  includedDirs: string;
+  setIncludedDirs: (value: string) => void;
+  includedFiles: string;
+  setIncludedFiles: (value: string) => void;
+
   // Form submission
   onSubmit: () => void;
   isSubmitting: boolean;
@@ -71,11 +75,15 @@ export default function ConfigurationModal({
   setExcludedDirs,
   excludedFiles,
   setExcludedFiles,
+  includedDirs,
+  setIncludedDirs,
+  includedFiles,
+  setIncludedFiles,
   onSubmit,
   isSubmitting
 }: ConfigurationModalProps) {
   const { messages: t } = useLanguage();
-  
+
   // Show token section state
   const [showTokenSection, setShowTokenSection] = useState(false);
 
@@ -112,7 +120,7 @@ export default function ConfigurationModal({
                 {repositoryInput}
               </div>
             </div>
-            
+
             {/* Language selection */}
             <div className="mb-4">
               <label htmlFor="language-select" className="block text-sm font-medium text-[var(--foreground)] mb-2">
@@ -132,7 +140,7 @@ export default function ConfigurationModal({
                 <option value="vi">Vietnamese (Tiếng Việt)</option>
               </select>
             </div>
-            
+
             {/* Wiki Type Selector - more compact version */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
@@ -162,7 +170,7 @@ export default function ConfigurationModal({
                     </div>
                   )}
                 </button>
-                
+
                 <button
                   type="button"
                   onClick={() => setIsComprehensiveView(false)}
@@ -188,7 +196,7 @@ export default function ConfigurationModal({
                 </button>
               </div>
             </div>
-            
+
             {/* Model Selector */}
             <div className="mb-4">
               <UserSelector
@@ -205,9 +213,13 @@ export default function ConfigurationModal({
                 setExcludedDirs={setExcludedDirs}
                 excludedFiles={excludedFiles}
                 setExcludedFiles={setExcludedFiles}
+                includedDirs={includedDirs}
+                setIncludedDirs={setIncludedDirs}
+                includedFiles={includedFiles}
+                setIncludedFiles={setIncludedFiles}
               />
             </div>
-            
+
             {/* Access token section */}
             <div className="mb-4">
               <button
@@ -217,7 +229,7 @@ export default function ConfigurationModal({
               >
                 {showTokenSection ? t.form?.hideTokens || 'Hide Access Tokens' : t.form?.addTokens || 'Add Access Tokens for Private Repositories'}
               </button>
-              
+
               {showTokenSection && (
                 <div className="mt-2 p-4 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)]">
                   <div className="mb-3">
@@ -257,7 +269,7 @@ export default function ConfigurationModal({
                       </button>
                     </div>
                   </div>
-                  
+
                   <div>
                     <label htmlFor="access-token" className="block text-xs font-medium text-[var(--foreground)] mb-2">
                       {t.form?.personalAccessToken || 'Personal Access Token'}

@@ -79,7 +79,16 @@
     "changeModel": "Change Model",
     "defaultNote": "These defaults are already applied. Add your custom exclusions above.",
     "hideDefault": "Hide Default",
-    "viewDefault": "View Default"
+    "viewDefault": "View Default",
+    "includedDirs": "Included Directories",
+    "includedFiles": "Included Files",
+    "enterIncludedDirs": "Enter included directories, one per line...",
+    "enterIncludedFiles": "Enter included files, one per line...",
+    "filterMode": "Filter Mode",
+    "excludeMode": "Exclude Paths",
+    "includeMode": "Include Only Paths",
+    "excludeModeDescription": "Specify paths to exclude from processing (default behavior)",
+    "includeModeDescription": "Specify only the paths to include, ignoring all others"
   },
   "footer": {
     "copyright": "DeepWiki - AI-powered documentation for code repositories"

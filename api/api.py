@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from typing import List, Optional, Dict, Any, Literal
@@ -351,9 +351,13 @@ def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
 
 # Import the simplified chat implementation
 from api.simple_chat import chat_completions_stream
+from api.websocket_wiki import handle_websocket_chat
 
 # Add the chat_completions_stream endpoint to the main app
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
+
+# Add the WebSocket endpoint
+app.add_websocket_route("/ws/chat", handle_websocket_chat)
 
 # --- Wiki Cache Helper Functions ---
 
@@ -475,7 +479,8 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "Chat": [
-                "POST /chat/completions/stream - Streaming chat completion",
+                "POST /chat/completions/stream - Streaming chat completion (HTTP)",
+                "WebSocket /ws/chat - WebSocket chat completion",
             ],
             "Wiki": [
                 "POST /export/wiki - Export wiki content as Markdown or JSON",
