@@ -48,9 +48,11 @@ if __name__ == "__main__":
     logger.info(f"Starting Streaming API on port {port}")
 
     # Run the FastAPI app with uvicorn
+    # Disable reload in production/Docker environment
+    is_development = os.environ.get("NODE_ENV") != "production"
     uvicorn.run(
         "api.api:app",
         host="0.0.0.0",
         port=port,
-        reload=True
+        reload=is_development
     )

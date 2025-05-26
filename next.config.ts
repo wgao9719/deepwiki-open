@@ -5,6 +5,34 @@ const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  // Optimize build for Docker
+  experimental: {
+    optimizePackageImports: ['@mermaid-js/mermaid', 'react-syntax-highlighter'],
+  },
+  // Reduce memory usage during build
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      };
+    }
+    // Optimize bundle size
+    config.optimization = {
+      ...config.optimization,
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all',
+          },
+        },
+      },
+    };
+    return config;
+  },
   async rewrites() {
     return [
       {
