@@ -471,6 +471,15 @@ async def delete_wiki_cache(
         logger.warning(f"Wiki cache not found, cannot delete: {cache_path}")
         raise HTTPException(status_code=404, detail="Wiki cache not found")
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "deepwiki-api"
+    }
+
 @app.get("/")
 async def root():
     """Root endpoint to check if the API is running"""
@@ -489,6 +498,9 @@ async def root():
             ],
             "LocalRepo": [
                 "GET /local_repo/structure - Get structure of a local repository (with path parameter)",
+            ],
+            "Health": [
+                "GET /health - Health check endpoint"
             ]
         }
     }
