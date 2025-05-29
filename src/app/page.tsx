@@ -7,7 +7,9 @@ import { FaWikipediaW, FaGithub, FaCoffee, FaTwitter } from 'react-icons/fa';
 import ThemeToggle from '@/components/theme-toggle';
 import Mermaid from '../components/Mermaid';
 import ConfigurationModal from '@/components/ConfigurationModal';
+import ProcessedProjects from '@/components/ProcessedProjects';
 import { extractUrlPath } from '@/utils/urlDecoder';
+import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -43,6 +45,7 @@ const DEMO_SEQUENCE_CHART = `sequenceDiagram
 export default function Home() {
   const router = useRouter();
   const { language, setLanguage, messages } = useLanguage();
+  const { projects, isLoading: projectsLoading } = useProcessedProjects();
 
   // Create a simple translation function
   const t = (key: string, params: Record<string, string | number> = {}): string => {
@@ -334,23 +337,51 @@ export default function Home() {
       <main className="flex-1 max-w-6xl mx-auto w-full overflow-y-auto">
         <div
           className="min-h-full flex flex-col items-center p-8 pt-10 bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
-          {/* Header section */}
-          <div className="flex flex-col items-center w-full max-w-2xl mb-8">
-            <div className="flex flex-col sm:flex-row items-center mb-6 gap-4">
-              <div className="relative">
-                <div className="absolute -inset-1 bg-[var(--accent-primary)]/20 rounded-full blur-md"></div>
-                <FaWikipediaW className="text-5xl text-[var(--accent-primary)] relative z-10" />
-              </div>
-              <div className="text-center sm:text-left">
-                <h2 className="text-2xl font-bold text-[var(--foreground)] font-serif mb-1">{t('home.welcome')}</h2>
-                <p className="text-[var(--accent-primary)] text-sm max-w-md">{t('home.welcomeTagline')}</p>
-              </div>
-            </div>
 
-            <p className="text-[var(--foreground)] text-center mb-8 text-lg leading-relaxed">
-              {t('home.description')}
-            </p>
-          </div>
+          {/* Conditionally show processed projects or welcome content */}
+          {!projectsLoading && projects.length > 0 ? (
+            <div className="w-full">
+              {/* Header section for existing projects */}
+              <div className="flex flex-col items-center w-full max-w-2xl mb-8 mx-auto">
+                <div className="flex flex-col sm:flex-row items-center mb-6 gap-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-[var(--accent-primary)]/20 rounded-full blur-md"></div>
+                    <FaWikipediaW className="text-5xl text-[var(--accent-primary)] relative z-10" />
+                  </div>
+                  <div className="text-center sm:text-left">
+                    <h2 className="text-2xl font-bold text-[var(--foreground)] font-serif mb-1">{t('projects.existingProjects')}</h2>
+                    <p className="text-[var(--accent-primary)] text-sm max-w-md">{t('projects.browseExisting')}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Show processed projects */}
+              <ProcessedProjects
+                showHeader={false}
+                maxItems={6}
+                messages={messages}
+                className="w-full"
+              />
+            </div>
+          ) : (
+            <>
+              {/* Header section */}
+              <div className="flex flex-col items-center w-full max-w-2xl mb-8">
+                <div className="flex flex-col sm:flex-row items-center mb-6 gap-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-[var(--accent-primary)]/20 rounded-full blur-md"></div>
+                    <FaWikipediaW className="text-5xl text-[var(--accent-primary)] relative z-10" />
+                  </div>
+                  <div className="text-center sm:text-left">
+                    <h2 className="text-2xl font-bold text-[var(--foreground)] font-serif mb-1">{t('home.welcome')}</h2>
+                    <p className="text-[var(--accent-primary)] text-sm max-w-md">{t('home.welcomeTagline')}</p>
+                  </div>
+                </div>
+
+                <p className="text-[var(--foreground)] text-center mb-8 text-lg leading-relaxed">
+                  {t('home.description')}
+                </p>
+              </div>
 
           {/* Quick Start section - redesigned for better spacing */}
           <div
@@ -413,6 +444,8 @@ export default function Home() {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       </main>
 

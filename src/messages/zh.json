@@ -113,5 +113,18 @@
   },
   "nav": {
     "wikiProjects": "项目列表"
+  },
+  "projects": {
+    "title": "已处理的Wiki项目",
+    "searchPlaceholder": "按项目名称、所有者或仓库搜索...",
+    "noProjects": "服务器缓存中未找到项目。缓存可能为空或服务器遇到问题。",
+    "noSearchResults": "没有项目符合您的搜索条件。",
+    "processedOn": "处理时间:",
+    "loadingProjects": "正在加载项目...",
+    "errorLoading": "加载项目时出错:",
+    "backToHome": "返回首页",
+    "browseExisting": "浏览现有项目",
+    "existingProjects": "现有项目",
+    "recentProjects": "最近项目"
   }
 }

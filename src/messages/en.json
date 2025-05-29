@@ -122,5 +122,18 @@
   },
   "nav": {
     "wikiProjects": "Wiki Projects"
+  },
+  "projects": {
+    "title": "Processed Wiki Projects",
+    "searchPlaceholder": "Search projects by name, owner, or repository...",
+    "noProjects": "No projects found in the server cache. The cache might be empty or the server encountered an issue.",
+    "noSearchResults": "No projects match your search criteria.",
+    "processedOn": "Processed on:",
+    "loadingProjects": "Loading projects...",
+    "errorLoading": "Error loading projects:",
+    "backToHome": "Back to Home",
+    "browseExisting": "Browse Existing Projects",
+    "existingProjects": "Existing Projects",
+    "recentProjects": "Recent Projects"
   }
 }

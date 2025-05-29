@@ -218,15 +218,20 @@ class RAG(adal.Component):
 
         self.provider = provider
         self.model = model
-        self.local_ollama = provider == "ollama"
+
+        # Import the helper functions
+        from api.config import get_embedder_config, is_ollama_embedder
+
+        # Determine if we're using Ollama embedder based on configuration
+        self.is_ollama_embedder = is_ollama_embedder()
 
         # Initialize components
         self.memory = Memory()
 
-        if self.local_ollama:
-            embedder_config = configs["embedder_ollama"]
-        else:
-            embedder_config = configs["embedder"]
+        # Get embedder configuration
+        embedder_config = get_embedder_config()
+        if not embedder_config:
+            raise ValueError("No embedder configuration found")
 
         # --- Initialize Embedder ---
         self.embedder = adal.Embedder(
@@ -242,7 +247,9 @@ class RAG(adal.Component):
                     raise ValueError("Ollama embedder only supports a single string")
                 query = query[0]
             return self.embedder(input=query)
-        self.query_embedder = single_string_embedder
+
+        # Use single string embedder for Ollama, regular embedder for others
+        self.query_embedder = single_string_embedder if self.is_ollama_embedder else self.embedder
 
         self.initialize_db_manager()
 
@@ -402,7 +409,7 @@ IMPORTANT FORMATTING RULES:
             repo_url_or_path,
             type,
             access_token,
-            local_ollama=self.local_ollama,
+            is_ollama_embedder=self.is_ollama_embedder,
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files,
             included_dirs=included_dirs,
@@ -419,10 +426,11 @@ IMPORTANT FORMATTING RULES:
         logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
 
         try:
-            retreive_embedder = self.query_embedder if self.local_ollama else self.embedder
+            # Use the appropriate embedder for retrieval
+            retrieve_embedder = self.query_embedder if self.is_ollama_embedder else self.embedder
             self.retriever = FAISSRetriever(
                 **configs["retriever"],
-                embedder=retreive_embedder,
+                embedder=retrieve_embedder,
                 documents=self.transformed_docs,
                 document_map_func=lambda doc: doc.vector,
             )
