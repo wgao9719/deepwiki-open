@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import Markdown from './Markdown';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -8,6 +8,18 @@ import RepoInfo from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
 import ModelSelectionModal from './ModelSelectionModal';
 import { createChatWebSocket, closeWebSocket, ChatCompletionRequest } from '@/utils/websocketClient';
+
+interface Model {
+  id: string;
+  name: string;
+}
+
+interface Provider {
+  id: string;
+  name: string;
+  models: Model[];
+  supportsCustomModel?: boolean;
+}
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -92,6 +104,38 @@ const Ask: React.FC<AskProps> = ({
       closeWebSocket(webSocketRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const fetchDefaultModel = async () => {
+      try {
+        setIsLoading(true);
+
+        const response = await fetch('/api/models/config');
+
+        if (!response.ok) {
+          throw new Error(`Error fetching model configurations: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        setSelectedProvider(data.defaultProvider);
+
+        // Find the default provider and set its default model
+        const selectedProvider = data.providers.find((p:Provider) => p.id === data.defaultProvider);
+        if (selectedProvider && selectedProvider.models.length > 0) {
+          setSelectedModel(selectedProvider.models[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch model configurations:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if(provider == '' || model == '') {
+      fetchDefaultModel()
+    }
+  }, [provider, model]);
 
   const clearConversation = () => {
     setQuestion('');
@@ -824,6 +868,7 @@ const Ask: React.FC<AskProps> = ({
         onApply={() => {
           console.log('Model selection applied:', selectedProvider, selectedModel);
         }}
+        showWikiType={false}
       />
     </div>
   );

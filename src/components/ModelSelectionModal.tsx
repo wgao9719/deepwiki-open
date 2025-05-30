@@ -32,6 +32,7 @@ interface ModelSelectionModalProps {
   includedFiles?: string;
   setIncludedFiles?: (value: string) => void;
   showFileFilters?: boolean;
+  showWikiType: boolean;
 }
 
 export default function ModelSelectionModal({
@@ -56,7 +57,8 @@ export default function ModelSelectionModal({
   setIncludedDirs,
   includedFiles = '',
   setIncludedFiles,
-  showFileFilters = false
+  showFileFilters = false,
+  showWikiType = true,
 }: ModelSelectionModalProps) {
   const { messages: t } = useLanguage();
 
@@ -126,10 +128,12 @@ export default function ModelSelectionModal({
           {/* Modal body */}
           <div className="p-6">
             {/* Wiki Type Selector */}
-            <WikiTypeSelector
-              isComprehensiveView={localIsComprehensiveView}
-              setIsComprehensiveView={setLocalIsComprehensiveView}
-            />
+            {
+              showWikiType && <WikiTypeSelector
+                    isComprehensiveView={localIsComprehensiveView}
+                    setIsComprehensiveView={setLocalIsComprehensiveView}
+                />
+            }
 
             {/* Divider */}
             <div className="my-4 border-t border-[var(--border-color)]/30"></div>
