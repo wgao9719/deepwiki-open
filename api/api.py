@@ -9,6 +9,19 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import google.generativeai as genai
 import asyncio
+import traceback
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from api.supabase_storage import (
+    upload_wiki_cache_to_supabase,
+    download_wiki_cache_from_supabase,
+    list_wiki_caches_from_supabase,
+    delete_wiki_cache_from_supabase,
+    get_public_url
+)
+
+from api.github_repos import github_fetcher, update_user_repos_background, update_user_repos_initial_background
 
 # Get a logger for this module
 logger = logging.getLogger(__name__)
@@ -306,8 +319,6 @@ def generate_markdown_export(repo_url: str, pages: List[WikiPage]) -> str:
         markdown += f"<a id='{page.id}'></a>\n\n"
         markdown += f"## {page.title}\n\n"
 
-
-
         # Add related pages
         if page.relatedPages and len(page.relatedPages) > 0:
             markdown += "### Related Pages\n\n"
@@ -363,38 +374,33 @@ app.add_websocket_route("/ws/chat", handle_websocket_chat)
 
 # --- Wiki Cache Helper Functions ---
 
-WIKI_CACHE_DIR = os.path.join(get_adalflow_default_root_path(), "wikicache")
-os.makedirs(WIKI_CACHE_DIR, exist_ok=True)
-
-def get_wiki_cache_path(owner: str, repo: str, repo_type: str, language: str) -> str:
-    """Generates the file path for a given wiki cache."""
-    filename = f"deepwiki_cache_{repo_type}_{owner}_{repo}_{language}.json"
-    return os.path.join(WIKI_CACHE_DIR, filename)
-
 async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) -> Optional[WikiCacheData]:
-    """Reads wiki cache data from the file system."""
-    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
-    if os.path.exists(cache_path):
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return WikiCacheData(**data)
-        except Exception as e:
-            logger.error(f"Error reading wiki cache from {cache_path}: {e}")
+    """Reads wiki cache data from Supabase storage only."""
+    logger.info(f"Loading wiki cache from Supabase for {owner}/{repo} ({repo_type}), lang: {language}")
+    try:
+        supabase_data = await download_wiki_cache_from_supabase(owner, repo, repo_type, language)
+        if supabase_data:
+            logger.info(f"Found cache in Supabase storage for {owner}/{repo}")
+            return WikiCacheData(**supabase_data)
+        else:
+            logger.info(f"No cache found in Supabase for {owner}/{repo}")
             return None
+    except Exception as e:
+        logger.error(f"Error reading from Supabase storage: {e}")
     return None
 
 async def save_wiki_cache(data: WikiCacheRequest) -> bool:
-    """Saves wiki cache data to the file system."""
-    cache_path = get_wiki_cache_path(data.owner, data.repo, data.repo_type, data.language)
-    logger.info(f"Attempting to save wiki cache. Path: {cache_path}")
+    """Saves wiki cache data to Supabase storage only."""
+    logger.info(f"Attempting to save wiki cache to Supabase for {data.owner}/{data.repo} ({data.repo_type}), lang: {data.language}")
+    
     try:
         payload = WikiCacheData(
             wiki_structure=data.wiki_structure,
             generated_pages=data.generated_pages,
             repo_url=data.repo_url
         )
-        # Log size of data to be cached for debugging (avoid logging full content if large)
+        
+        # Log size of data to be cached for debugging
         try:
             payload_json = payload.model_dump_json()
             payload_size = len(payload_json.encode('utf-8'))
@@ -402,17 +408,24 @@ async def save_wiki_cache(data: WikiCacheRequest) -> bool:
         except Exception as ser_e:
             logger.warning(f"Could not serialize payload for size logging: {ser_e}")
 
-
-        logger.info(f"Writing cache file to: {cache_path}")
-        with open(cache_path, 'w', encoding='utf-8') as f:
-            json.dump(payload.model_dump(), f, indent=2)
-        logger.info(f"Wiki cache successfully saved to {cache_path}")
-        return True
-    except IOError as e:
-        logger.error(f"IOError saving wiki cache to {cache_path}: {e.strerror} (errno: {e.errno})", exc_info=True)
-        return False
+        # Save to Supabase storage only
+        logger.info(f"Uploading wiki cache to Supabase storage")
+        supabase_success = await upload_wiki_cache_to_supabase(
+            data.owner, 
+            data.repo, 
+            data.repo_type, 
+            data.language, 
+            payload.model_dump()
+        )
+        
+        if supabase_success:
+            logger.info(f"Wiki cache successfully uploaded to Supabase storage")
+            return True
+        else:
+            logger.error(f"Failed to upload wiki cache to Supabase storage")
+            return False
     except Exception as e:
-        logger.error(f"Unexpected error saving wiki cache to {cache_path}: {e}", exc_info=True)
+        logger.error(f"Unexpected error saving wiki cache: {e}", exc_info=True)
         return False
 
 # --- Wiki Cache API Endpoints ---
@@ -457,22 +470,24 @@ async def delete_wiki_cache(
     language: str = Query(..., description="Language of the wiki content")
 ):
     """
-    Deletes a specific wiki cache from the file system.
+    Deletes a specific wiki cache from Supabase storage.
     """
     logger.info(f"Attempting to delete wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
-    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
-
-    if os.path.exists(cache_path):
-        try:
-            os.remove(cache_path)
-            logger.info(f"Successfully deleted wiki cache: {cache_path}")
+    
+    try:
+        success = await delete_wiki_cache_from_supabase(owner, repo, repo_type, language)
+        
+        if success:
+            logger.info(f"Successfully deleted wiki cache from Supabase: {owner}/{repo}")
             return {"message": f"Wiki cache for {owner}/{repo} ({language}) deleted successfully"}
-        except Exception as e:
-            logger.error(f"Error deleting wiki cache {cache_path}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to delete wiki cache: {str(e)}")
-    else:
-        logger.warning(f"Wiki cache not found, cannot delete: {cache_path}")
-        raise HTTPException(status_code=404, detail="Wiki cache not found")
+        else:
+            logger.warning(f"Wiki cache not found or could not be deleted: {owner}/{repo}")
+            raise HTTPException(status_code=404, detail="Wiki cache not found or could not be deleted")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting wiki cache {owner}/{repo}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete wiki cache: {str(e)}")
 
 @app.get("/health")
 async def health_check():
@@ -494,10 +509,28 @@ async def root():
                 "POST /chat/completions/stream - Streaming chat completion (HTTP)",
                 "WebSocket /ws/chat - WebSocket chat completion",
             ],
-            "Wiki": [
-                "POST /export/wiki - Export wiki content as Markdown or JSON",
-                "GET /api/wiki_cache - Retrieve cached wiki data",
-                "POST /api/wiki_cache - Store wiki data to cache"
+            "Wiki Cache (Supabase)": [
+                "GET /api/wiki_cache - Retrieve cached wiki data from Supabase",
+                "POST /api/wiki_cache - Store wiki data to Supabase cache",
+                "DELETE /api/wiki_cache - Delete specific wiki cache from Supabase",
+                "GET /api/processed_projects - List all cached projects from Supabase"
+            ],
+            "Wiki Export": [
+                "POST /export/wiki - Export wiki content as Markdown or JSON"
+            ],
+            "Global Wiki Cache": [
+                "GET /api/global_wiki_cache - List all global wiki caches",
+                "GET /api/global_wiki_cache/{owner}/{repo} - Get specific global wiki cache",
+                "GET /api/global_wiki_cache/{owner}/{repo}/url - Get public URL for cache file",
+                "DELETE /api/global_wiki_cache/{owner}/{repo} - Delete global wiki cache"
+            ],
+            "GitHub Repositories": [
+                "POST /api/user/github-repos/update - Update user's GitHub repositories",
+                "GET /api/user/github-repos/{user_id} - Get user's GitHub repositories",
+                "POST /api/user/github-repos/refresh - Force refresh user's repositories",
+                "GET /api/user/github-repos/status/{user_id} - Get repository fetch status for debugging",
+                "GET /api/user/profile/{user_id} - Get complete user profile with repositories",
+                "GET /api/users/github-repos/search - Search users by repository"
             ],
             "LocalRepo": [
                 "GET /local_repo/structure - Get structure of a local repository (with path parameter)",
@@ -512,58 +545,359 @@ async def root():
 @app.get("/api/processed_projects", response_model=List[ProcessedProjectEntry])
 async def get_processed_projects():
     """
-    Lists all processed projects found in the wiki cache directory.
+    Lists all processed projects found in Supabase storage.
     Projects are identified by files named like: deepwiki_cache_{repo_type}_{owner}_{repo}_{language}.json
     """
-    project_entries: List[ProcessedProjectEntry] = []
-    # WIKI_CACHE_DIR is already defined globally in the file
-
     try:
-        if not os.path.exists(WIKI_CACHE_DIR):
-            logger.info(f"Cache directory {WIKI_CACHE_DIR} not found. Returning empty list.")
-            return []
+        logger.info("Fetching processed projects from Supabase storage")
+        
+        # Get cache files from Supabase
+        cache_files = await list_wiki_caches_from_supabase()
+        
+        project_entries: List[ProcessedProjectEntry] = []
+        
+        for cache_file in cache_files:
+            try:
+                # Convert cache file metadata to ProcessedProjectEntry
+                # Parse timestamp from updated_at or created_at
+                submitted_at = 0
+                if cache_file.get("updated_at"):
+                    try:
+                        dt = datetime.fromisoformat(cache_file["updated_at"].replace('Z', '+00:00'))
+                        submitted_at = int(dt.timestamp() * 1000)
+                    except:
+                        pass
+                elif cache_file.get("created_at"):
+                    try:
+                        dt = datetime.fromisoformat(cache_file["created_at"].replace('Z', '+00:00'))
+                        submitted_at = int(dt.timestamp() * 1000)
+                    except:
+                        pass
 
-        logger.info(f"Scanning for project cache files in: {WIKI_CACHE_DIR}")
-        filenames = await asyncio.to_thread(os.listdir, WIKI_CACHE_DIR) # Use asyncio.to_thread for os.listdir
-
-        for filename in filenames:
-            if filename.startswith("deepwiki_cache_") and filename.endswith(".json"):
-                file_path = os.path.join(WIKI_CACHE_DIR, filename)
-                try:
-                    stats = await asyncio.to_thread(os.stat, file_path) # Use asyncio.to_thread for os.stat
-                    parts = filename.replace("deepwiki_cache_", "").replace(".json", "").split('_')
-
-                    # Expecting repo_type_owner_repo_language
-                    # Example: deepwiki_cache_github_AsyncFuncAI_deepwiki-open_en.json
-                    # parts = [github, AsyncFuncAI, deepwiki-open, en]
-                    if len(parts) >= 4:
-                        repo_type = parts[0]
-                        owner = parts[1]
-                        language = parts[-1] # language is the last part
-                        repo = "_".join(parts[2:-1]) # repo can contain underscores
-
-                        project_entries.append(
-                            ProcessedProjectEntry(
-                                id=filename,
-                                owner=owner,
-                                repo=repo,
-                                name=f"{owner}/{repo}",
-                                repo_type=repo_type,
-                                submittedAt=int(stats.st_mtime * 1000), # Convert to milliseconds
-                                language=language
-                            )
-                        )
-                    else:
-                        logger.warning(f"Could not parse project details from filename: {filename}")
-                except Exception as e:
-                    logger.error(f"Error processing file {file_path}: {e}")
-                    continue # Skip this file on error
+                project_entries.append(
+                    ProcessedProjectEntry(
+                        id=cache_file["id"],
+                        owner=cache_file["owner"],
+                        repo=cache_file["repo"],
+                        name=cache_file["name"],
+                        repo_type=cache_file["repo_type"],
+                        submittedAt=submitted_at,
+                        language=cache_file["language"]
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error processing cache file metadata: {e}")
+                continue
 
         # Sort by most recent first
         project_entries.sort(key=lambda p: p.submittedAt, reverse=True)
-        logger.info(f"Found {len(project_entries)} processed project entries.")
+        logger.info(f"Found {len(project_entries)} processed project entries in Supabase.")
         return project_entries
 
     except Exception as e:
-        logger.error(f"Error listing processed projects from {WIKI_CACHE_DIR}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to list processed projects from server cache.")
+        logger.error(f"Error listing processed projects from Supabase: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list processed projects from Supabase storage.")
+
+# --- Global Wiki Cache Endpoints (Supabase Storage) ---
+
+@app.get("/api/global_wiki_cache", response_model=List[Dict[str, Any]])
+async def get_global_wiki_caches():
+    """
+    Lists all wiki cache files from Supabase storage (global history accessible to all users).
+    """
+    try:
+        logger.info("Fetching global wiki caches from Supabase storage")
+        cache_files = await list_wiki_caches_from_supabase()
+        return cache_files
+    except Exception as e:
+        logger.error(f"Error fetching global wiki caches: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch global wiki caches")
+
+@app.get("/api/global_wiki_cache/{owner}/{repo}", response_model=Optional[WikiCacheData])
+async def get_global_wiki_cache(
+    owner: str,
+    repo: str,
+    repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
+    language: str = Query(default="en", description="Language of the wiki content")
+):
+    """
+    Retrieve a specific wiki cache from Supabase storage (global history).
+    """
+    try:
+        logger.info(f"Fetching global wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
+        supabase_data = await download_wiki_cache_from_supabase(owner, repo, repo_type, language)
+        
+        if supabase_data:
+            return WikiCacheData(**supabase_data)
+        else:
+            logger.info(f"Global wiki cache not found for {owner}/{repo} ({repo_type}), lang: {language}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error fetching global wiki cache: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch global wiki cache")
+
+@app.get("/api/global_wiki_cache/{owner}/{repo}/url")
+async def get_global_wiki_cache_url(
+    owner: str,
+    repo: str,
+    repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
+    language: str = Query(default="en", description="Language of the wiki content")
+):
+    """
+    Get public URL for a wiki cache file in Supabase storage.
+    """
+    try:
+        logger.info(f"Getting public URL for {owner}/{repo} ({repo_type}), lang: {language}")
+        public_url = get_public_url(owner, repo, repo_type, language)
+        
+        if public_url:
+            return {"public_url": public_url}
+        else:
+            raise HTTPException(status_code=404, detail="Wiki cache file not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting public URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get public URL")
+
+@app.delete("/api/global_wiki_cache/{owner}/{repo}")
+async def delete_global_wiki_cache(
+    owner: str,
+    repo: str,
+    repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
+    language: str = Query(default="en", description="Language of the wiki content")
+):
+    """
+    Delete a wiki cache from Supabase storage (global history).
+    """
+    try:
+        logger.info(f"Deleting global wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
+        success = await delete_wiki_cache_from_supabase(owner, repo, repo_type, language)
+        
+        if success:
+            return {"message": f"Global wiki cache for {owner}/{repo} ({language}) deleted successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete global wiki cache")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting global wiki cache: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete global wiki cache")
+
+# --- GitHub Repositories Endpoints ---
+
+@app.post("/api/user/github-repos/update")
+async def update_user_github_repos(
+    user_id: str = Query(..., description="User ID"),
+    github_username: str = Query(..., description="GitHub username"),
+    github_token: str = Query(None, description="Optional GitHub token for higher rate limits")
+):
+    """
+    Update GitHub repositories for a user by fetching from GitHub API
+    """
+    try:
+        logger.info(f"Updating GitHub repos for user {user_id} with username {github_username}")
+        
+        # Check if this is a new user who has never had repos fetched
+        from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
+        from supabase import create_client
+        
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        profile_response = supabase.table('profiles').select('github_repos_updated_at, github_repos').eq('id', user_id).execute()
+        
+        is_initial_fetch = False
+        if profile_response.data:
+            profile = profile_response.data[0]
+            # Consider it initial fetch if never updated OR has empty repos array
+            is_initial_fetch = not profile.get('github_repos_updated_at') or not profile.get('github_repos') or len(profile.get('github_repos', [])) == 0
+        
+        # Use appropriate background task
+        if is_initial_fetch:
+            logger.info(f"Detected initial fetch for user {user_id}, bypassing rate limiting")
+            asyncio.create_task(update_user_repos_initial_background(user_id, github_username, github_token))
+        else:
+            logger.info(f"Regular update for user {user_id}, applying rate limiting")
+            asyncio.create_task(update_user_repos_background(user_id, github_username, github_token))
+        
+        return {"message": "GitHub repositories update started", "status": "processing", "initial_fetch": is_initial_fetch}
+        
+    except Exception as e:
+        logger.error(f"Error starting GitHub repos update: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start repository update")
+
+@app.get("/api/user/github-repos/{user_id}")
+async def get_user_github_repos(user_id: str):
+    """
+    Get GitHub repositories for a specific user
+    """
+    try:
+        logger.info(f"Fetching GitHub repos for user {user_id}")
+        repositories = await github_fetcher.get_user_github_repos(user_id)
+        
+        return {
+            "user_id": user_id,
+            "repositories": repositories,
+            "count": len(repositories)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching GitHub repos for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch repositories")
+
+@app.post("/api/user/github-repos/refresh")
+async def refresh_user_github_repos(
+    user_id: str = Query(..., description="User ID"),
+    github_username: str = Query(..., description="GitHub username"),
+    github_token: str = Query(None, description="Optional GitHub token for higher rate limits"),
+    force: bool = Query(False, description="Force refresh even if updated recently")
+):
+    """
+    Force refresh GitHub repositories for a user (bypasses 24-hour limit)
+    """
+    try:
+        logger.info(f"Force refreshing GitHub repos for user {user_id}")
+        
+        if force:
+            # Temporarily clear the last updated timestamp to force refresh
+            from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
+            from supabase import create_client
+            
+            supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+            supabase.table('profiles').update({
+                'github_repos_updated_at': None
+            }).eq('id', user_id).execute()
+        
+        # Update repositories
+        success = await github_fetcher.update_user_github_repos(user_id, github_username, github_token)
+        
+        if success:
+            return {"message": "GitHub repositories refreshed successfully", "status": "completed"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to refresh repositories")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing GitHub repos: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refresh repositories")
+
+@app.get("/api/user/profile/{user_id}")
+async def get_user_profile(user_id: str):
+    """
+    Get complete user profile including GitHub repositories
+    """
+    try:
+        logger.info(f"Fetching profile for user {user_id}")
+        
+        from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
+        from supabase import create_client
+        
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        response = supabase.table('profiles').select(
+            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, created_at, updated_at'
+        ).eq('id', user_id).execute()
+        
+        if response.data:
+            profile = response.data[0]
+            return {
+                "profile": profile,
+                "repositories_count": len(profile.get('github_repos', []))
+            }
+        else:
+            raise HTTPException(status_code=404, detail="User profile not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch user profile")
+
+@app.get("/api/users/github-repos/search")
+async def search_users_by_repo(
+    repo_name: str = Query(..., description="Repository name to search for"),
+    limit: int = Query(10, description="Maximum number of users to return")
+):
+    """
+    Search for users who have contributed to a specific repository
+    """
+    try:
+        logger.info(f"Searching users who contributed to {repo_name}")
+        
+        from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
+        from supabase import create_client
+        
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        
+        # Use PostgreSQL's jsonb operators to search within the github_repos array
+        response = supabase.table('profiles').select(
+            'id, username, github_username, full_name, avatar_url'
+        ).filter(
+            'github_repos', 'cs', f'[{{"full_name": "{repo_name}"}}]'
+        ).limit(limit).execute()
+        
+        users = []
+        for profile in response.data:
+            # Find the specific repository in their repos list
+            github_repos = profile.get('github_repos', [])
+            matching_repo = next((repo for repo in github_repos if repo['full_name'] == repo_name), None)
+            
+            if matching_repo:
+                users.append({
+                    "user_id": profile['id'],
+                    "username": profile.get('username'),
+                    "github_username": profile.get('github_username'),
+                    "full_name": profile.get('full_name'),
+                    "avatar_url": profile.get('avatar_url'),
+                    "repository": matching_repo
+                })
+        
+        return {
+            "repository": repo_name,
+            "users": users,
+            "count": len(users)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching users by repo: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search users")
+
+@app.get("/api/user/github-repos/status/{user_id}")
+async def get_user_github_repos_status(user_id: str):
+    """
+    Get status of GitHub repositories for a user (for debugging)
+    """
+    try:
+        logger.info(f"Checking GitHub repos status for user {user_id}")
+        
+        from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
+        from supabase import create_client
+        
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        response = supabase.table('profiles').select(
+            'id, github_username, github_repos, github_repos_updated_at, created_at'
+        ).eq('id', user_id).execute()
+        
+        if response.data:
+            profile = response.data[0]
+            repos = profile.get('github_repos', [])
+            
+            return {
+                "user_id": user_id,
+                "github_username": profile.get('github_username'),
+                "repositories_count": len(repos),
+                "last_updated": profile.get('github_repos_updated_at'),
+                "profile_created": profile.get('created_at'),
+                "has_repos": len(repos) > 0,
+                "sample_repos": repos[:3] if repos else []  # Show first 3 repos as sample
+            }
+        else:
+            raise HTTPException(status_code=404, detail="User profile not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking GitHub repos status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check repository status")
