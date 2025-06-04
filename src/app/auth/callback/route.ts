@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
+const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
@@ -47,6 +49,15 @@ export async function GET(request: Request) {
       if (!error && data.user) {
         console.log('User authenticated successfully:', data.user.email)
         
+        // Check if this is a new user by looking for existing profile
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id, github_repos_updated_at')
+          .eq('id', data.user.id)
+          .single()
+        
+        const isNewUser = !existingProfile;
+        
         // Create or update user profile
         const { error: profileError } = await supabase
           .from('profiles')
@@ -56,6 +67,7 @@ export async function GET(request: Request) {
             full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || null,
             avatar_url: data.user.user_metadata?.avatar_url || null,
             username: data.user.user_metadata?.user_name || data.user.user_metadata?.preferred_username || null,
+            github_username: data.user.user_metadata?.user_name || null,
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'id'
@@ -66,20 +78,48 @@ export async function GET(request: Request) {
         } else {
           console.log('User profile created/updated successfully')
         }
+
+        // For new users or users without GitHub repos, trigger background repository fetching
+        const shouldFetchRepos = isNewUser || !existingProfile?.github_repos_updated_at;
+        
+        let githubUsernameForFetch: string | null = null;
+        if (data.user?.user_metadata && typeof data.user.user_metadata.user_name === 'string' && data.user.user_metadata.user_name.length > 0) {
+            githubUsernameForFetch = data.user.user_metadata.user_name;
+        } else {
+            console.warn(`GitHub username not found or invalid in user_metadata for user ${data.user?.id}. Repositories will not be fetched automatically on signup/login.`);
+            if (data.user?.user_metadata) {
+                console.log('User metadata user_name:', data.user.user_metadata.user_name);
+            } else {
+                console.log('User metadata was not available.');
+            }
+        }
+        
+        if (shouldFetchRepos && githubUsernameForFetch) {
+          console.log(`Triggering background GitHub repository fetch for ${githubUsernameForFetch} (user ID: ${data.user.id})`);
+          
+          const queryParams = new URLSearchParams({
+            user_id: data.user.id,
+            github_username: githubUsernameForFetch
+          });
+
+          // Trigger repository fetch in background (don't wait for it)
+          fetch(`${SERVER_BASE_URL}/api/user/github-repos/update?${queryParams.toString()}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }).catch(err => {
+            console.error(`Background GitHub repos fetch trigger failed for user ${data.user.id}, username ${githubUsernameForFetch}:`, err);
+          });
+        } else if (shouldFetchRepos && !githubUsernameForFetch) {
+            console.log(`Skipping GitHub repository fetch for user ${data.user.id}: githubUsernameForFetch is missing or invalid.`);
+        }
         
         const forwardedHost = request.headers.get('x-forwarded-host') // original origin before load balancer
         const isLocalEnv = process.env.NODE_ENV === 'development'
         
         console.log('Redirecting to:', isLocalEnv ? `${origin}${next}` : forwardedHost ? `https://${forwardedHost}${next}` : `${origin}${next}`)
-        
-        if (isLocalEnv) {
-          // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-          return NextResponse.redirect(`${origin}${next}`)
-        } else if (forwardedHost) {
-          return NextResponse.redirect(`https://${forwardedHost}${next}`)
-        } else {
-          return NextResponse.redirect(`${origin}${next}`)
-        }
+        return NextResponse.redirect(isLocalEnv ? `${origin}${next}` : forwardedHost ? `https://${forwardedHost}${next}` : `${origin}${next}`)
       } else {
         console.error('Error exchanging code for session:', error)
         return NextResponse.redirect(`${origin}/login?error=auth_error&message=${encodeURIComponent(error?.message || 'Authentication failed')}`)

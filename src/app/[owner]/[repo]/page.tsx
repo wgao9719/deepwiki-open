@@ -1418,11 +1418,7 @@ IMPORTANT:
     }
 
     // Proceed with the rest of the refresh logic
-    console.log('Refreshing wiki. Server cache will be overwritten upon new generation if not cleared.');
-
-    // Clear the localStorage cache (if any remnants or if it was used before this change)
-    const localStorageCacheKey = getCacheKey(effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, language, isComprehensiveView);
-    localStorage.removeItem(localStorageCacheKey);
+    console.log('Refreshing wiki. Supabase cache will be overwritten upon new generation if not cleared.');
 
     // Reset cache loaded flag
     cacheLoadedSuccessfully.current = false;
@@ -1460,7 +1456,7 @@ IMPORTANT:
 
       const loadData = async () => {
         // Try loading from server-side cache first
-        setLoadingMessage(messages.loading?.fetchingCache || 'Checking for cached wiki...');
+        setLoadingMessage(messages.loading?.fetchingCache || 'Checking Supabase cache...');
         try {
           const params = new URLSearchParams({
             owner: effectiveRepoInfo.owner,
@@ -1474,7 +1470,7 @@ IMPORTANT:
           if (response.ok) {
             const cachedData = await response.json(); // Returns null if no cache
             if (cachedData && cachedData.wiki_structure && cachedData.generated_pages && Object.keys(cachedData.generated_pages).length > 0) {
-              console.log('Using server-cached wiki data');
+              console.log('Using Supabase-cached wiki data');
 
               // Update repoInfo with cached repo_url if not provided in URL
               let updatedRepoInfo = effectiveRepoInfo;
@@ -1608,14 +1604,14 @@ IMPORTANT:
               cacheLoadedSuccessfully.current = true;
               return; // Exit if cache is successfully loaded
             } else {
-              console.log('No valid wiki data in server cache or cache is empty.');
+              console.log('No valid wiki data in Supabase cache or cache is empty.');
             }
           } else {
             // Log error but proceed to fetch structure, as cache is optional
-            console.error('Error fetching wiki cache from server:', response.status, await response.text());
+            console.error('Error fetching wiki cache from Supabase:', response.status, await response.text());
           }
         } catch (error) {
-          console.error('Error loading from server cache:', error);
+          console.error('Error loading from Supabase cache:', error);
           // Proceed to fetch structure if cache loading fails
         }
 
@@ -1634,7 +1630,7 @@ IMPORTANT:
     // but keeping the main unmount cleanup in the other useEffect
   }, [effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, language, fetchRepositoryStructure, messages.loading?.fetchingCache, isComprehensiveView]);
 
-  // Save wiki to server-side cache when generation is complete
+  // Save wiki to Supabase cache when generation is complete
   useEffect(() => {
     const saveCache = async () => {
       if (!isLoading &&
@@ -1648,7 +1644,7 @@ IMPORTANT:
           generatedPages[page.id] && generatedPages[page.id].content && generatedPages[page.id].content !== 'Loading...');
 
         if (allPagesHaveContent) {
-          console.log('Attempting to save wiki data to server cache via Next.js proxy');
+          console.log('Attempting to save wiki data to Supabase cache via Next.js proxy');
 
           try {
             // Make sure wikiStructure has sections and rootSections
@@ -1677,12 +1673,12 @@ IMPORTANT:
             });
 
             if (response.ok) {
-              console.log('Wiki data successfully saved to server cache');
+              console.log('Wiki data successfully saved to Supabase cache');
             } else {
-              console.error('Error saving wiki data to server cache:', response.status, await response.text());
+              console.error('Error saving wiki data to Supabase cache:', response.status, await response.text());
             }
           } catch (error) {
-            console.error('Error saving to server cache:', error);
+            console.error('Error saving to Supabase cache:', error);
           }
         }
       }
@@ -1905,8 +1901,6 @@ IMPORTANT:
                   <h3 className="text-xl font-bold text-[var(--foreground)] mb-4 break-words font-serif">
                     {generatedPages[currentPageId].title}
                   </h3>
-
-
 
                   <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
                     <Markdown
