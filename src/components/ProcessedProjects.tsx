@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { FaTimes, FaTh, FaList } from 'react-icons/fa';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Interface should match the structure from the API
 interface ProcessedProject {
@@ -13,6 +14,21 @@ interface ProcessedProject {
   repo_type: string;
   submittedAt: number;
   language: string;
+}
+
+interface UserGitHubRepo {
+  name: string;
+  full_name: string;
+  description: string;
+  html_url: string;
+  language: string | null;
+  stars: number;
+  forks: number;
+  updated_at: string;
+  owner: string;
+  is_owner: boolean;
+  is_fork: boolean;
+  relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
 
 interface ProcessedProjectsProps {
@@ -29,10 +45,13 @@ export default function ProcessedProjects({
   messages 
 }: ProcessedProjectsProps) {
   const [projects, setProjects] = useState<ProcessedProject[]>([]);
+  const [userRepositories, setUserRepositories] = useState<UserGitHubRepo[]>([]);
+  const [collaboratorRepositories, setCollaboratorRepositories] = useState<UserGitHubRepo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const { user } = useAuth();
 
   // Default messages fallback
   const defaultMessages = {
@@ -43,7 +62,10 @@ export default function ProcessedProjects({
     processedOn: 'Processed on:',
     loadingProjects: 'Loading projects...',
     errorLoading: 'Error loading projects:',
-    backToHome: 'Back to Home'
+    backToHome: 'Back to Home',
+    yourRepositories: 'Your Repositories',
+    yourContributorRepositories: 'Your Contributor Repositories',
+    otherRepositories: 'Other Repositories'
   };
 
   const t = (key: string) => {
@@ -54,19 +76,36 @@ export default function ProcessedProjects({
   };
 
   useEffect(() => {
-    const fetchProjects = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       setError(null);
+      
       try {
-        const response = await fetch('/api/wiki/projects');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch projects: ${response.statusText}`);
+        // Fetch processed projects
+        const projectsResponse = await fetch('/api/wiki/projects');
+        if (!projectsResponse.ok) {
+          throw new Error(`Failed to fetch projects: ${projectsResponse.statusText}`);
         }
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
+        const projectsData = await projectsResponse.json();
+        if (projectsData.error) {
+          throw new Error(projectsData.error);
         }
-        setProjects(data as ProcessedProject[]);
+        setProjects(projectsData as ProcessedProject[]);
+
+        // Fetch user's GitHub repositories if user is logged in
+        if (user?.id) {
+          try {
+            const userProfileResponse = await fetch(`/api/user/profile/${user.id}`);
+            if (userProfileResponse.ok) {
+              const userData = await userProfileResponse.json();
+              setUserRepositories(userData.profile?.github_repos || []);
+              setCollaboratorRepositories(userData.profile?.github_collaborator_repos || []);
+            }
+          } catch (err) {
+            console.warn('Could not fetch user repositories:', err);
+            // Don't show error for this as it's not critical
+          }
+        }
       } catch (e: unknown) {
         console.error("Failed to load projects from API:", e);
         const message = e instanceof Error ? e.message : "An unknown error occurred.";
@@ -77,25 +116,62 @@ export default function ProcessedProjects({
       }
     };
 
-    fetchProjects();
-  }, []);
+    fetchData();
+  }, [user?.id]);
 
-  // Filter projects based on search query
-  const filteredProjects = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return maxItems ? projects.slice(0, maxItems) : projects;
+  // Categorize projects based on user repositories
+  const categorizedProjects = useMemo(() => {
+    const userRepoNames = new Set(userRepositories.map(repo => repo.name.toLowerCase()));
+    const collaboratorRepoNames = new Set(collaboratorRepositories.map(repo => repo.name.toLowerCase()));
+    
+    let filteredProjects = projects;
+    
+    // Apply search filter if query exists
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filteredProjects = projects.filter(project => 
+        project.name.toLowerCase().includes(query) ||
+        project.owner.toLowerCase().includes(query) ||
+        project.repo.toLowerCase().includes(query) ||
+        project.repo_type.toLowerCase().includes(query)
+      );
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = projects.filter(project => 
-      project.name.toLowerCase().includes(query) ||
-      project.owner.toLowerCase().includes(query) ||
-      project.repo.toLowerCase().includes(query) ||
-      project.repo_type.toLowerCase().includes(query)
-    );
+    // Separate into user repos, collaborator repos, and other repos
+    const userProjects: ProcessedProject[] = [];
+    const collaboratorProjects: ProcessedProject[] = [];
+    const otherProjects: ProcessedProject[] = [];
 
-    return maxItems ? filtered.slice(0, maxItems) : filtered;
-  }, [projects, searchQuery, maxItems]);
+    filteredProjects.forEach(project => {
+      if (userRepoNames.has(project.repo.toLowerCase())) {
+        userProjects.push(project);
+      } else if (collaboratorRepoNames.has(project.repo.toLowerCase())) {
+        collaboratorProjects.push(project);
+      } else {
+        otherProjects.push(project);
+      }
+    });
+
+    // Apply maxItems limit if specified
+    let totalShown = 0;
+    const finalUserProjects = maxItems ? userProjects.slice(0, Math.min(userProjects.length, maxItems - totalShown)) : userProjects;
+    totalShown += finalUserProjects.length;
+    
+    const remainingSlots1 = maxItems ? maxItems - totalShown : collaboratorProjects.length;
+    const finalCollaboratorProjects = remainingSlots1 > 0 ? collaboratorProjects.slice(0, remainingSlots1) : [];
+    totalShown += finalCollaboratorProjects.length;
+    
+    const remainingSlots2 = maxItems ? maxItems - totalShown : otherProjects.length;
+    const finalOtherProjects = remainingSlots2 > 0 ? otherProjects.slice(0, remainingSlots2) : [];
+
+    return {
+      userProjects: finalUserProjects,
+      collaboratorProjects: finalCollaboratorProjects,
+      otherProjects: finalOtherProjects,
+      hasUserRepos: userRepoNames.size > 0 && finalUserProjects.length > 0,
+      hasCollaboratorRepos: collaboratorRepoNames.size > 0 && finalCollaboratorProjects.length > 0
+    };
+  }, [projects, userRepositories, collaboratorRepositories, searchQuery, maxItems]);
 
   const clearSearch = () => {
     setSearchQuery('');
@@ -126,6 +202,73 @@ export default function ProcessedProjects({
       alert(`Failed to delete project: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   };
+
+  const renderProjectsList = (projectsList: ProcessedProject[]) => (
+    <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-2'}>
+      {projectsList.map((project) => (
+        viewMode === 'card' ? (
+          <div key={project.id} className="relative p-4 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02]">
+            <button
+              type="button"
+              onClick={() => handleDelete(project)}
+              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+              title="Delete project"
+            >
+              <FaTimes className="h-4 w-4" />
+            </button>
+            <Link
+              href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
+              className="block"
+            >
+              <h3 className="text-lg font-semibold text-[var(--link-color)] hover:underline mb-2 line-clamp-2">
+                {project.name}
+              </h3>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <span className="px-2 py-1 text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-full border border-[var(--accent-primary)]/20">
+                  {project.repo_type}
+                </span>
+                <span className="px-2 py-1 text-xs bg-[var(--background)] text-[var(--muted)] rounded-full border border-[var(--border-color)]">
+                  {project.language}
+                </span>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                {t('processedOn')} {new Date(project.submittedAt).toLocaleDateString()}
+              </p>
+            </Link>
+          </div>
+        ) : (
+          <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
+            <button
+              type="button"
+              onClick={() => handleDelete(project)}
+              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+              title="Delete project"
+            >
+              <FaTimes className="h-4 w-4" />
+            </button>
+            <Link
+              href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
+              className="flex items-center justify-between"
+            >
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-medium text-[var(--link-color)] hover:underline truncate">
+                  {project.name}
+                </h3>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  {t('processedOn')} {new Date(project.submittedAt).toLocaleDateString()} • {project.repo_type} • {project.language}
+                </p>
+              </div>
+              <div className="flex gap-2 ml-4">
+                <span className="px-2 py-1 text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded border border-[var(--accent-primary)]/20">
+                  {project.repo_type}
+                </span>
+              </div>
+            </Link>
+          </div>
+        )
+      ))}
+    </div>
+  );
 
   return (
     <div className={`${className}`}>
@@ -191,79 +334,58 @@ export default function ProcessedProjects({
       {isLoading && <p className="text-[var(--muted)]">{t('loadingProjects')}</p>}
       {error && <p className="text-[var(--highlight)]">{t('errorLoading')} {error}</p>}
 
-      {!isLoading && !error && filteredProjects.length > 0 && (
-        <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-2'}>
-            {filteredProjects.map((project) => (
-            viewMode === 'card' ? (
-              <div key={project.id} className="relative p-4 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02]">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(project)}
-                  className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Delete project"
-                >
-                  <FaTimes className="h-4 w-4" />
-                </button>
-                <Link
-                  href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
-                  className="block"
-                >
-                  <h3 className="text-lg font-semibold text-[var(--link-color)] hover:underline mb-2 line-clamp-2">
-                    {project.name}
-                  </h3>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <span className="px-2 py-1 text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-full border border-[var(--accent-primary)]/20">
-                      {project.repo_type}
-                    </span>
-                    <span className="px-2 py-1 text-xs bg-[var(--background)] text-[var(--muted)] rounded-full border border-[var(--border-color)]">
-                      {project.language}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--muted)]">
-                    {t('processedOn')} {new Date(project.submittedAt).toLocaleDateString()}
-                  </p>
-                </Link>
+      {!isLoading && !error && (
+        <>
+          {/* User Repositories Section */}
+          {categorizedProjects.hasUserRepos && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-xl font-semibold text-[var(--foreground)]">{t('yourRepositories')}</h2>
+                <span className="px-2 py-1 text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-full border border-[var(--accent-primary)]/20">
+                  {categorizedProjects.userProjects.length}
+                </span>
               </div>
-            ) : (
-              <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(project)}
-                  className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Delete project"
-                >
-                  <FaTimes className="h-4 w-4" />
-                </button>
-                <Link
-                  href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base font-medium text-[var(--link-color)] hover:underline truncate">
-                      {project.name}
-                    </h3>
-                    <p className="text-xs text-[var(--muted)] mt-1">
-                      {t('processedOn')} {new Date(project.submittedAt).toLocaleDateString()} • {project.repo_type} • {project.language}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 ml-4">
-                    <span className="px-2 py-1 text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded border border-[var(--accent-primary)]/20">
-                      {project.repo_type}
-                    </span>
-                  </div>
-                </Link>
+              {renderProjectsList(categorizedProjects.userProjects)}
+            </div>
+          )}
+
+          {/* Contributor Repositories Section */}
+          {categorizedProjects.hasCollaboratorRepos && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-xl font-semibold text-[var(--foreground)]">{t('yourContributorRepositories')}</h2>
+                <span className="px-2 py-1 text-xs bg-[var(--highlight)]/10 text-[var(--highlight)] rounded-full border border-[var(--highlight)]/20">
+                  {categorizedProjects.collaboratorProjects.length}
+                </span>
               </div>
-            )
-          ))}
-        </div>
-      )}
+              {renderProjectsList(categorizedProjects.collaboratorProjects)}
+            </div>
+          )}
 
-      {!isLoading && !error && projects.length > 0 && filteredProjects.length === 0 && searchQuery && (
-        <p className="text-[var(--muted)]">{t('noSearchResults')}</p>
-      )}
+          {/* Other Repositories Section */}
+          {categorizedProjects.otherProjects.length > 0 && (
+            <div>
+              {(categorizedProjects.hasUserRepos || categorizedProjects.hasCollaboratorRepos) && (
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-xl font-semibold text-[var(--foreground)]">{t('otherRepositories')}</h2>
+                  <span className="px-2 py-1 text-xs bg-[var(--background)] text-[var(--muted)] rounded-full border border-[var(--border-color)]">
+                    {categorizedProjects.otherProjects.length}
+                  </span>
+                </div>
+              )}
+              {renderProjectsList(categorizedProjects.otherProjects)}
+            </div>
+          )}
 
-      {!isLoading && !error && projects.length === 0 && (
-        <p className="text-[var(--muted)]">{t('noProjects')}</p>
+          {/* No Results Messages */}
+          {projects.length > 0 && categorizedProjects.userProjects.length === 0 && categorizedProjects.collaboratorProjects.length === 0 && categorizedProjects.otherProjects.length === 0 && searchQuery && (
+            <p className="text-[var(--muted)]">{t('noSearchResults')}</p>
+          )}
+
+          {projects.length === 0 && (
+            <p className="text-[var(--muted)]">{t('noProjects')}</p>
+          )}
+        </>
       )}
     </div>
   );
