@@ -15,6 +15,7 @@ interface GitHubRepo {
   owner: string;
   is_owner: boolean;
   is_fork: boolean;
+  relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
 
 interface UserProfile {
@@ -26,30 +27,37 @@ interface UserProfile {
   github_username: string;
   github_repos: GitHubRepo[];
   github_repos_updated_at: string;
+  github_collaborator_repos: GitHubRepo[];
+  github_collaborator_repos_updated_at: string;
   created_at: string;
   updated_at: string;
 }
 
 interface Props {
   userId: string;
-  showUpdateButton?: boolean;
   maxRepos?: number;
+  showUpdateButton?: boolean;
   className?: string;
+  repoType?: 'owned' | 'collaborator' | 'all';
 }
 
 const UserGitHubRepos: React.FC<Props> = ({ 
   userId, 
-  showUpdateButton = true, 
-  maxRepos = 20,
-  className = "" 
+  maxRepos = 10, 
+  showUpdateButton = false, 
+  className = "",
+  repoType = 'all'
 }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [repositories, setRepositories] = useState<GitHubRepo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ownedRepositories, setOwnedRepositories] = useState<GitHubRepo[]>([]);
+  const [collaboratorRepositories, setCollaboratorRepositories] = useState<GitHubRepo[]>([]);
+  const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUserProfile = async () => {
+    if (!userId) return;
+
     try {
       setLoading(true);
       setError(null);
@@ -57,14 +65,20 @@ const UserGitHubRepos: React.FC<Props> = ({
       const response = await fetch(`/api/user/profile/${userId}`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch profile: ${response.status}`);
+        if (response.status === 404) {
+          setError('User profile not found');
+        } else {
+          throw new Error(`Failed to fetch profile: ${response.status}`);
+        }
+        return;
       }
       
       const data = await response.json();
       setProfile(data.profile);
-      setRepositories(data.profile.github_repos || []);
+      setOwnedRepositories(data.profile.github_repos || []);
+      setCollaboratorRepositories(data.profile.github_collaborator_repos || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch profile');
+      setError(err instanceof Error ? err.message : 'Failed to fetch repositories');
       console.error('Error fetching user profile:', err);
     } finally {
       setLoading(false);
@@ -148,6 +162,47 @@ const UserGitHubRepos: React.FC<Props> = ({
     return colors[language || ''] || '#586069';
   };
 
+  const getRepositoriesToDisplay = () => {
+    switch (repoType) {
+      case 'owned':
+        return ownedRepositories;
+      case 'collaborator':
+        return collaboratorRepositories;
+      case 'all':
+      default:
+        return [...ownedRepositories, ...collaboratorRepositories].sort((a, b) => 
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        );
+    }
+  };
+
+  const getTitle = () => {
+    switch (repoType) {
+      case 'owned':
+        return 'GitHub Repositories';
+      case 'collaborator':
+        return 'Contributor Repositories';
+      case 'all':
+      default:
+        return 'GitHub Repositories';
+    }
+  };
+
+  const getSubtitle = () => {
+    if (!profile?.github_username) return '';
+    
+    switch (repoType) {
+      case 'owned':
+        return `@${profile.github_username} • ${ownedRepositories.length} repositories`;
+      case 'collaborator':
+        return `@${profile.github_username} • ${collaboratorRepositories.length} contributor repositories`;
+      case 'all':
+      default:
+        const total = ownedRepositories.length + collaboratorRepositories.length;
+        return `@${profile.github_username} • ${total} repositories total`;
+    }
+  };
+
   if (loading) {
     return (
       <div className={`bg-[var(--card-bg)] rounded-lg p-6 ${className}`}>
@@ -176,6 +231,7 @@ const UserGitHubRepos: React.FC<Props> = ({
     );
   }
 
+  const repositories = getRepositoriesToDisplay();
   const displayRepos = repositories.slice(0, maxRepos);
 
   return (
@@ -186,11 +242,11 @@ const UserGitHubRepos: React.FC<Props> = ({
           <FaGithub className="text-xl text-[var(--foreground)]" />
           <div>
             <h3 className="text-lg font-semibold text-[var(--foreground)]">
-              GitHub Repositories
+              {getTitle()}
             </h3>
-            {profile?.github_username && (
+            {getSubtitle() && (
               <p className="text-sm text-[var(--muted)]">
-                @{profile.github_username} • {repositories.length} repositories
+                {getSubtitle()}
               </p>
             )}
           </div>
@@ -266,6 +322,11 @@ const UserGitHubRepos: React.FC<Props> = ({
                     {repo.is_owner && (
                       <span className="text-xs bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] px-2 py-0.5 rounded-full border border-[var(--accent-primary)]/30">
                         Owner
+                      </span>
+                    )}
+                    {repo.relationship && (
+                      <span className="text-xs bg-[var(--highlight)]/10 text-[var(--highlight)] px-2 py-0.5 rounded-full border border-[var(--highlight)]/30">
+                        {repo.relationship === 'collaborator' ? 'Collaborator' : 'Org Member'}
                       </span>
                     )}
                   </div>
