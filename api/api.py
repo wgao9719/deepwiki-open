@@ -698,8 +698,12 @@ async def update_user_github_repos(
     """
     Update GitHub repositories for a user by fetching from GitHub API
     """
+    timestamp = datetime.now().isoformat()
+    logger.info(f"🚀 [{timestamp}] FastAPI GitHub repos update endpoint called")
+    logger.info(f"📝 [{timestamp}] Parameters - user_id: {user_id}, github_username: {github_username}, token: {'PROVIDED' if github_token else 'NOT_PROVIDED'}")
+    
     try:
-        logger.info(f"Updating GitHub repos for user {user_id} with username {github_username}")
+        logger.info(f"🔍 [{timestamp}] Checking if this is initial fetch for user {user_id}")
         
         # Check if this is a new user who has never had repos fetched
         from api.github_repos import SUPABASE_URL, SUPABASE_SERVICE_KEY
@@ -708,24 +712,34 @@ async def update_user_github_repos(
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         profile_response = supabase.table('profiles').select('github_repos_updated_at, github_repos').eq('id', user_id).execute()
         
+        logger.info(f"📊 [{timestamp}] Profile query response - data count: {len(profile_response.data) if profile_response.data else 0}")
+        
         is_initial_fetch = False
         if profile_response.data:
             profile = profile_response.data[0]
             # Consider it initial fetch if never updated OR has empty repos array
             is_initial_fetch = not profile.get('github_repos_updated_at') or not profile.get('github_repos') or len(profile.get('github_repos', [])) == 0
+            logger.info(f"📋 [{timestamp}] Profile analysis - updated_at: {profile.get('github_repos_updated_at')}, repos_count: {len(profile.get('github_repos', []))}")
+        else:
+            logger.warning(f"⚠️ [{timestamp}] No profile found for user {user_id}")
+        
+        logger.info(f"🎯 [{timestamp}] is_initial_fetch determined as: {is_initial_fetch}")
         
         # Use appropriate background task
         if is_initial_fetch:
-            logger.info(f"Detected initial fetch for user {user_id}, bypassing rate limiting")
+            logger.info(f"🆕 [{timestamp}] Starting INITIAL background task for user {user_id}")
             asyncio.create_task(update_user_repos_initial_background(user_id, github_username, github_token))
         else:
-            logger.info(f"Regular update for user {user_id}, applying rate limiting")
+            logger.info(f"🔄 [{timestamp}] Starting REGULAR background task for user {user_id}")
             asyncio.create_task(update_user_repos_background(user_id, github_username, github_token))
         
-        return {"message": "GitHub repositories update started", "status": "processing", "initial_fetch": is_initial_fetch}
+        response_data = {"message": "GitHub repositories update started", "status": "processing", "initial_fetch": is_initial_fetch}
+        logger.info(f"✅ [{timestamp}] Successfully started background task, returning: {response_data}")
+        return response_data
         
     except Exception as e:
-        logger.error(f"Error starting GitHub repos update: {e}")
+        logger.error(f"💥 [{timestamp}] Error starting GitHub repos update: {e}")
+        logger.error(f"🔍 [{timestamp}] Exception details: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to start repository update")
 
 @app.get("/api/user/github-repos/{user_id}")
@@ -735,12 +749,15 @@ async def get_user_github_repos(user_id: str):
     """
     try:
         logger.info(f"Fetching GitHub repos for user {user_id}")
-        repositories = await github_fetcher.get_user_github_repos(user_id)
+        owned_repositories, collaborator_repositories = await github_fetcher.get_user_github_repos(user_id)
         
         return {
             "user_id": user_id,
-            "repositories": repositories,
-            "count": len(repositories)
+            "owned_repositories": owned_repositories,
+            "collaborator_repositories": collaborator_repositories,
+            "owned_count": len(owned_repositories),
+            "collaborator_count": len(collaborator_repositories),
+            "total_count": len(owned_repositories) + len(collaborator_repositories)
         }
         
     except Exception as e:
@@ -767,7 +784,8 @@ async def refresh_user_github_repos(
             
             supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
             supabase.table('profiles').update({
-                'github_repos_updated_at': None
+                'github_repos_updated_at': None,
+                'github_collaborator_repos_updated_at': None
             }).eq('id', user_id).execute()
         
         # Update repositories
@@ -797,14 +815,19 @@ async def get_user_profile(user_id: str):
         
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         response = supabase.table('profiles').select(
-            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, created_at, updated_at'
+            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at, updated_at'
         ).eq('id', user_id).execute()
         
         if response.data:
             profile = response.data[0]
+            owned_repos = profile.get('github_repos', [])
+            collaborator_repos = profile.get('github_collaborator_repos', [])
+            
             return {
                 "profile": profile,
-                "repositories_count": len(profile.get('github_repos', []))
+                "owned_repositories_count": len(owned_repos),
+                "collaborator_repositories_count": len(collaborator_repos),
+                "total_repositories_count": len(owned_repos) + len(collaborator_repos)
             }
         else:
             raise HTTPException(status_code=404, detail="User profile not found")
@@ -831,28 +854,57 @@ async def search_users_by_repo(
         
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         
-        # Use PostgreSQL's jsonb operators to search within the github_repos array
-        response = supabase.table('profiles').select(
-            'id, username, github_username, full_name, avatar_url'
+        # Search in both owned repos and collaborator repos
+        owned_response = supabase.table('profiles').select(
+            'id, username, github_username, full_name, avatar_url, github_repos'
         ).filter(
             'github_repos', 'cs', f'[{{"full_name": "{repo_name}"}}]'
         ).limit(limit).execute()
         
+        collaborator_response = supabase.table('profiles').select(
+            'id, username, github_username, full_name, avatar_url, github_collaborator_repos'
+        ).filter(
+            'github_collaborator_repos', 'cs', f'[{{"full_name": "{repo_name}"}}]'
+        ).limit(limit).execute()
+        
         users = []
-        for profile in response.data:
-            # Find the specific repository in their repos list
-            github_repos = profile.get('github_repos', [])
-            matching_repo = next((repo for repo in github_repos if repo['full_name'] == repo_name), None)
-            
-            if matching_repo:
-                users.append({
-                    "user_id": profile['id'],
-                    "username": profile.get('username'),
-                    "github_username": profile.get('github_username'),
-                    "full_name": profile.get('full_name'),
-                    "avatar_url": profile.get('avatar_url'),
-                    "repository": matching_repo
-                })
+        seen_user_ids = set()
+        
+        # Process owned repositories
+        for profile in owned_response.data:
+            if profile['id'] not in seen_user_ids:
+                github_repos = profile.get('github_repos', [])
+                matching_repo = next((repo for repo in github_repos if repo['full_name'] == repo_name), None)
+                
+                if matching_repo:
+                    users.append({
+                        "user_id": profile['id'],
+                        "username": profile.get('username'),
+                        "github_username": profile.get('github_username'),
+                        "full_name": profile.get('full_name'),
+                        "avatar_url": profile.get('avatar_url'),
+                        "repository": matching_repo,
+                        "relationship": "owner" if matching_repo.get('is_owner') else "contributor"
+                    })
+                    seen_user_ids.add(profile['id'])
+        
+        # Process collaborator repositories
+        for profile in collaborator_response.data:
+            if profile['id'] not in seen_user_ids:
+                collaborator_repos = profile.get('github_collaborator_repos', [])
+                matching_repo = next((repo for repo in collaborator_repos if repo['full_name'] == repo_name), None)
+                
+                if matching_repo:
+                    users.append({
+                        "user_id": profile['id'],
+                        "username": profile.get('username'),
+                        "github_username": profile.get('github_username'),
+                        "full_name": profile.get('full_name'),
+                        "avatar_url": profile.get('avatar_url'),
+                        "repository": matching_repo,
+                        "relationship": matching_repo.get('relationship', 'collaborator')
+                    })
+                    seen_user_ids.add(profile['id'])
         
         return {
             "repository": repo_name,
@@ -877,21 +929,27 @@ async def get_user_github_repos_status(user_id: str):
         
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         response = supabase.table('profiles').select(
-            'id, github_username, github_repos, github_repos_updated_at, created_at'
+            'id, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at'
         ).eq('id', user_id).execute()
         
         if response.data:
             profile = response.data[0]
-            repos = profile.get('github_repos', [])
+            owned_repos = profile.get('github_repos', [])
+            collaborator_repos = profile.get('github_collaborator_repos', [])
             
             return {
                 "user_id": user_id,
                 "github_username": profile.get('github_username'),
-                "repositories_count": len(repos),
-                "last_updated": profile.get('github_repos_updated_at'),
+                "owned_repositories_count": len(owned_repos),
+                "collaborator_repositories_count": len(collaborator_repos),
+                "total_repositories_count": len(owned_repos) + len(collaborator_repos),
+                "owned_repos_last_updated": profile.get('github_repos_updated_at'),
+                "collaborator_repos_last_updated": profile.get('github_collaborator_repos_updated_at'),
                 "profile_created": profile.get('created_at'),
-                "has_repos": len(repos) > 0,
-                "sample_repos": repos[:3] if repos else []  # Show first 3 repos as sample
+                "has_owned_repos": len(owned_repos) > 0,
+                "has_collaborator_repos": len(collaborator_repos) > 0,
+                "sample_owned_repos": owned_repos[:3] if owned_repos else [],
+                "sample_collaborator_repos": collaborator_repos[:3] if collaborator_repos else []
             }
         else:
             raise HTTPException(status_code=404, detail="User profile not found")
