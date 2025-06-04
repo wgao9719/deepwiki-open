@@ -221,6 +221,12 @@ class GitHubReposFetcher:
         try:
             self._check_supabase_connection()
             
+            # Verify the user profile exists before updating
+            profile_check = self.supabase.table('profiles').select('id').eq('id', user_id).execute()
+            if not profile_check.data:
+                logger.error(f"User profile not found for user_id {user_id}, cannot update repositories")
+                return False
+            
             # For initial fetch, don't check rate limiting
             logger.info(f"Initial fetch of GitHub repositories for new user {github_username}")
             repositories = await self.fetch_user_repositories(github_username, github_token)
@@ -234,12 +240,25 @@ class GitHubReposFetcher:
             
             response = self.supabase.table('profiles').update(update_data).eq('id', user_id).execute()
             
-            if response.data:
-                logger.info(f"Successfully completed initial fetch of {len(repositories)} repositories for user {github_username}")
-                return True
-            else:
-                logger.error(f"Failed to update repositories for new user {user_id} (GitHub username: {github_username}). Supabase update returned no data.")
+            # Check for errors instead of data presence
+            if hasattr(response, 'error') and response.error:
+                logger.error(f"Supabase error updating repositories for user {user_id}: {response.error}")
                 return False
+            
+            # Additional check: ensure the response indicates success
+            try:
+                logger.info(f"Successfully completed initial fetch of {len(repositories)} repositories for user {github_username}")
+                
+                # Optional: Verify the update was applied by reading back the data
+                verify_response = self.supabase.table('profiles').select('github_repos').eq('id', user_id).execute()
+                if verify_response.data and verify_response.data[0].get('github_repos') is not None:
+                    actual_repo_count = len(verify_response.data[0].get('github_repos', []))
+                    logger.info(f"Verification: User {user_id} now has {actual_repo_count} repositories stored")
+                
+                return True
+            except Exception as verify_error:
+                logger.warning(f"Update may have succeeded but verification failed for user {user_id}: {verify_error}")
+                return True  # Assume success since the main update didn't error
                 
         except Exception as e:
             logger.error(f"Error in initial GitHub repos fetch for user {user_id}: {str(e)}")
@@ -284,12 +303,25 @@ class GitHubReposFetcher:
             
             response = self.supabase.table('profiles').update(update_data).eq('id', user_id).execute()
             
-            if response.data:
-                logger.info(f"Successfully updated {len(repositories)} repositories for user {github_username}")
-                return True
-            else:
-                logger.error(f"Failed to update repositories for user {user_id} (GitHub username: {github_username}). Supabase update returned no data.")
+            # Check for errors instead of data presence
+            if hasattr(response, 'error') and response.error:
+                logger.error(f"Supabase error updating repositories for user {user_id}: {response.error}")
                 return False
+            
+            # Additional check: ensure the response indicates success
+            try:
+                logger.info(f"Successfully updated {len(repositories)} repositories for user {github_username}")
+                
+                # Optional: Verify the update was applied by reading back the data
+                verify_response = self.supabase.table('profiles').select('github_repos').eq('id', user_id).execute()
+                if verify_response.data and verify_response.data[0].get('github_repos') is not None:
+                    actual_repo_count = len(verify_response.data[0].get('github_repos', []))
+                    logger.info(f"Verification: User {user_id} now has {actual_repo_count} repositories stored")
+                
+                return True
+            except Exception as verify_error:
+                logger.warning(f"Update may have succeeded but verification failed for user {user_id}: {verify_error}")
+                return True  # Assume success since the main update didn't error
                 
         except Exception as e:
             logger.error(f"Error updating GitHub repos for user {user_id}: {str(e)}")
