@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaWikipediaW, FaGithub, FaCoffee, FaTwitter } from 'react-icons/fa';
 import ThemeToggle from '@/components/theme-toggle';
+import UserMenu from '@/components/UserMenu';
 import Mermaid from '../components/Mermaid';
 import ConfigurationModal from '@/components/ConfigurationModal';
 import ProcessedProjects from '@/components/ProcessedProjects';
@@ -470,6 +471,7 @@ export default function Home() {
               </a>
             </div>
             <ThemeToggle />
+            <UserMenu />
           </div>
         </div>
       </footer>
