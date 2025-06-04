@@ -1898,9 +1898,22 @@ IMPORTANT:
             <div id="wiki-content" className="w-full flex-grow p-6 lg:p-8 overflow-y-auto">
               {currentPageId && generatedPages[currentPageId] ? (
                 <div className="max-w-[900px] xl:max-w-[1000px] mx-auto">
-                  <h3 className="text-xl font-bold text-[var(--foreground)] mb-4 break-words font-serif">
-                    {generatedPages[currentPageId].title}
-                  </h3>
+                  <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-xl font-bold text-[var(--foreground)] break-words font-serif">
+                      {generatedPages[currentPageId].title}
+                    </h3>
+                    <Link
+                      href={`/${effectiveRepoInfo.owner}/${effectiveRepoInfo.repo}/edit/${currentPageId}`}
+                      onClick={() => {
+                        if (generatedPages[currentPageId]) {
+                          sessionStorage.setItem('editPageContent', generatedPages[currentPageId].content)
+                        }
+                      }}
+                      className="text-xs text-[var(--accent-primary)] hover:underline"
+                    >
+                      Edit Page
+                    </Link>
+                  </div>
 
                   <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
                     <Markdown
