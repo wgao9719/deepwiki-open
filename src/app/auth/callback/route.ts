@@ -4,6 +4,9 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
 
 export async function GET(request: Request) {
+  // Add basic logging to see if route is hit
+  console.log('🔥 AUTH CALLBACK ROUTE HIT!', new Date().toISOString())
+  
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')
@@ -48,15 +51,18 @@ export async function GET(request: Request) {
       
       if (!error && data.user) {
         console.log('User authenticated successfully:', data.user.email)
+        console.log('User metadata:', JSON.stringify(data.user.user_metadata, null, 2))
         
         // Check if this is a new user by looking for existing profile
         const { data: existingProfile } = await supabase
           .from('profiles')
-          .select('id, github_repos_updated_at')
+          .select('id, github_repos_updated_at, github_repos')
           .eq('id', data.user.id)
           .single()
         
         const isNewUser = !existingProfile;
+        console.log('Is new user:', isNewUser)
+        console.log('Existing profile:', existingProfile)
         
         // Create or update user profile
         const { error: profileError } = await supabase
@@ -80,7 +86,9 @@ export async function GET(request: Request) {
         }
 
         // For new users or users without GitHub repos, trigger background repository fetching
-        const shouldFetchRepos = isNewUser || !existingProfile?.github_repos_updated_at;
+        const shouldFetchRepos = isNewUser || !existingProfile?.github_repos_updated_at || !existingProfile?.github_repos || existingProfile.github_repos.length === 0;
+        console.log('Should fetch repos:', shouldFetchRepos)
+        console.log('Reason - isNewUser:', isNewUser, 'no updated_at:', !existingProfile?.github_repos_updated_at, 'no repos:', !existingProfile?.github_repos || existingProfile.github_repos.length === 0)
         
         let githubUsernameForFetch: string | null = null;
         if (data.user?.user_metadata && typeof data.user.user_metadata.user_name === 'string' && data.user.user_metadata.user_name.length > 0) {
@@ -89,30 +97,48 @@ export async function GET(request: Request) {
             console.warn(`GitHub username not found or invalid in user_metadata for user ${data.user?.id}. Repositories will not be fetched automatically on signup/login.`);
             if (data.user?.user_metadata) {
                 console.log('User metadata user_name:', data.user.user_metadata.user_name);
+                console.log('Available metadata keys:', Object.keys(data.user.user_metadata));
             } else {
                 console.log('User metadata was not available.');
             }
         }
         
+        console.log('GitHub username for fetch:', githubUsernameForFetch)
+        
         if (shouldFetchRepos && githubUsernameForFetch) {
-          console.log(`Triggering background GitHub repository fetch for ${githubUsernameForFetch} (user ID: ${data.user.id})`);
+          console.log(`🚀 Triggering background GitHub repository fetch for ${githubUsernameForFetch} (user ID: ${data.user.id})`);
           
           const queryParams = new URLSearchParams({
             user_id: data.user.id,
             github_username: githubUsernameForFetch
           });
 
+          const fetchUrl = `${SERVER_BASE_URL}/api/user/github-repos/update?${queryParams.toString()}`;
+          console.log('Fetch URL:', fetchUrl)
+
           // Trigger repository fetch in background (don't wait for it)
-          fetch(`${SERVER_BASE_URL}/api/user/github-repos/update?${queryParams.toString()}`, {
+          fetch(fetchUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+          }).then(async (response) => {
+            console.log('GitHub repos fetch response status:', response.status)
+            if (response.ok) {
+              const responseData = await response.json()
+              console.log('GitHub repos fetch response:', responseData)
+            } else {
+              console.error('GitHub repos fetch failed with status:', response.status)
+              const errorText = await response.text()
+              console.error('Error response body:', errorText)
+            }
           }).catch(err => {
             console.error(`Background GitHub repos fetch trigger failed for user ${data.user.id}, username ${githubUsernameForFetch}:`, err);
           });
-        } else if (shouldFetchRepos && !githubUsernameForFetch) {
-            console.log(`Skipping GitHub repository fetch for user ${data.user.id}: githubUsernameForFetch is missing or invalid.`);
+        } else {
+          console.log(`❌ Skipping GitHub repository fetch for user ${data.user.id}:`);
+          console.log('   shouldFetchRepos:', shouldFetchRepos);
+          console.log('   githubUsernameForFetch:', githubUsernameForFetch);
         }
         
         const forwardedHost = request.headers.get('x-forwarded-host') // original origin before load balancer
