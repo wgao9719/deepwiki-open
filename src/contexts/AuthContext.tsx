@@ -41,6 +41,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
 
         if (event === 'SIGNED_IN' && session?.user) {
+          // Trigger backend pipeline to fetch & store this user's GitHub repos
+          // Do it in the background – we don't await so the redirect is not delayed
+          try {
+            const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
+            const userId = session.user.id
+            const githubUsername = (session.user.user_metadata as any)?.user_name || (session.user.user_metadata as any)?.preferred_username
+
+            if (githubUsername) {
+              // Fire-and-forget request – backend decides if it needs to do initial or regular fetch
+              fetch(
+                `${apiBaseUrl}/api/user/github-repos/update?user_id=${encodeURIComponent(
+                  userId
+                )}&github_username=${encodeURIComponent(githubUsername)}`,
+                {
+                  method: 'POST'
+                }
+              ).catch(err => {
+                console.error('Failed to trigger GitHub repo sync:', err)
+              })
+            } else {
+              console.warn('Could not find githubUsername in user metadata, skipping repo sync trigger')
+            }
+          } catch (err) {
+            console.error('Unexpected error while triggering repo sync:', err)
+          }
+
           console.log('User signed in, redirecting to home')
           router.push('/')
         } else if (event === 'SIGNED_OUT') {
