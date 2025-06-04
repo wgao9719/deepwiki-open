@@ -22,7 +22,8 @@
     "react-syntax-highlighter": "^15.6.1",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "svg-pan-zoom": "^3.6.2"
+    "svg-pan-zoom": "^3.6.2",
+    "lucide-react": "^0.337.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
