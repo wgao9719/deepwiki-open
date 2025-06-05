@@ -122,13 +122,41 @@ export default function ProcessedProjects({
 
   // Categorize projects based on user repositories
   const categorizedProjects = useMemo(() => {
-    // Create sets using the full repository name (owner/repo) for accurate matching
-    const userRepoFullNames = new Set(userRepositories.map(repo => repo.full_name.toLowerCase()));
-    const collaboratorRepoFullNames = new Set(collaboratorRepositories.map(repo => repo.full_name.toLowerCase()));
+    // Combine all repositories for comprehensive categorization
+    const allRepositories = [...userRepositories, ...collaboratorRepositories];
     
-    // Debug logging to help verify fork base repositories are included
-    console.log('User repositories:', userRepositories.map(r => ({ name: r.full_name, is_fork: r.is_fork, is_collaborator: r.is_collaborator })));
-    console.log('Collaborator repositories:', collaboratorRepositories.map(r => ({ name: r.full_name, is_collaborator: r.is_collaborator, relationship: r.relationship })));
+    // Create categorized sets based on repository ownership and relationship
+    const ownedRepoFullNames = new Set(
+      allRepositories
+        .filter(repo => repo.is_owner === true) // User owns this repo (includes both regular repos and forks)
+        .map(repo => repo.full_name.toLowerCase())
+    );
+    
+    const collaboratedRepoFullNames = new Set(
+      allRepositories
+        .filter(repo => 
+          repo.is_owner === false || // User doesn't own this repo (base repos, external collaborations)
+          (repo.relationship && ['base_of_fork', 'base_of_collaborator_fork'].includes(repo.relationship)) // Base repositories
+        )
+        .map(repo => repo.full_name.toLowerCase())
+    );
+    
+    // Debug logging to help verify the new categorization
+    console.log('Owned repositories (includes forks):', allRepositories.filter(r => r.is_owner === true).map(r => ({ 
+      name: r.full_name, 
+      is_fork: r.is_fork, 
+      is_owner: r.is_owner,
+      relationship: r.relationship 
+    })));
+    console.log('Collaborated repositories (base repos and external collaborations):', allRepositories.filter(r => 
+      r.is_owner === false || 
+      (r.relationship && ['base_of_fork', 'base_of_collaborator_fork'].includes(r.relationship))
+    ).map(r => ({ 
+      name: r.full_name, 
+      is_owner: r.is_owner, 
+      is_collaborator: r.is_collaborator, 
+      relationship: r.relationship 
+    })));
     
     let filteredProjects = projects;
     
@@ -152,12 +180,12 @@ export default function ProcessedProjects({
       // Create the full repository name for the project
       const projectFullName = `${project.owner}/${project.repo}`.toLowerCase();
       
-      if (userRepoFullNames.has(projectFullName)) {
+      if (ownedRepoFullNames.has(projectFullName)) {
         userProjects.push(project);
-        console.log(`Project ${projectFullName} categorized as USER repository`);
-      } else if (collaboratorRepoFullNames.has(projectFullName)) {
+        console.log(`Project ${projectFullName} categorized as USER repository (owned or forked by user)`);
+      } else if (collaboratedRepoFullNames.has(projectFullName)) {
         collaboratorProjects.push(project);
-        console.log(`Project ${projectFullName} categorized as COLLABORATOR repository`);
+        console.log(`Project ${projectFullName} categorized as COLLABORATED repository (base repo or external collaboration)`);
       } else {
         otherProjects.push(project);
         console.log(`Project ${projectFullName} categorized as OTHER repository`);
@@ -180,8 +208,8 @@ export default function ProcessedProjects({
       userProjects: finalUserProjects,
       collaboratorProjects: finalCollaboratorProjects,
       otherProjects: finalOtherProjects,
-      hasUserRepos: userRepoFullNames.size > 0 && finalUserProjects.length > 0,
-      hasCollaboratorRepos: collaboratorRepoFullNames.size > 0 && finalCollaboratorProjects.length > 0
+      hasUserRepos: ownedRepoFullNames.size > 0 && finalUserProjects.length > 0,
+      hasCollaboratorRepos: collaboratedRepoFullNames.size > 0 && finalCollaboratorProjects.length > 0
     };
   }, [projects, userRepositories, collaboratorRepositories, searchQuery, maxItems]);
 
@@ -374,7 +402,7 @@ export default function ProcessedProjects({
                   {categorizedProjects.collaboratorProjects.length}
                 </span>
               </div>
-              {renderProjectsList(categorizedProjects.collaboratorProjects)}
+              {renderProjectsList(categorizedProjects.collaboratorProjects, false)}
             </div>
           )}
 
