@@ -15,6 +15,7 @@ interface GitHubRepo {
   updated_at: string;
   owner: string;
   is_owner: boolean;
+  is_collaborator: boolean;
   is_fork: boolean;
   relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
@@ -26,6 +27,8 @@ interface UserProfile {
   github_repos_updated_at: string;
   github_collaborator_repos: GitHubRepo[];
   github_collaborator_repos_updated_at: string;
+  github_other_repos?: GitHubRepo[];
+  github_other_repos_updated_at?: string;
 }
 
 export default function GitHubReposSidebar() {
@@ -33,6 +36,7 @@ export default function GitHubReposSidebar() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [ownedRepositories, setOwnedRepositories] = useState<GitHubRepo[]>([]);
   const [collaboratorRepositories, setCollaboratorRepositories] = useState<GitHubRepo[]>([]);
+  const [otherRepositories, setOtherRepositories] = useState<GitHubRepo[]>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,8 +61,29 @@ export default function GitHubReposSidebar() {
       
       const data = await response.json();
       setProfile(data.profile);
-      setOwnedRepositories(data.profile.github_repos || []);
-      setCollaboratorRepositories(data.profile.github_collaborator_repos || []);
+      
+      // Separate owned and collaborator repositories properly
+      const allRepos = [
+        ...(data.profile.github_repos || []),
+        ...(data.profile.github_collaborator_repos || [])
+      ];
+      
+      // Filter owned repositories (is_owner = true AND not a fork)
+      const owned = allRepos.filter(repo => repo.is_owner === true && repo.is_fork === false);
+      
+      // Filter collaborator repositories: a) explicit collaborator, or b) user-owned fork of someone else's repo
+      const collaborator = allRepos.filter(repo => 
+        repo.is_collaborator === true || 
+        (repo.is_owner === true && repo.is_fork === true) ||
+        (repo.is_owner === false && repo.relationship && repo.relationship !== 'starred')
+      );
+      
+      // Filter other repositories (starred, watched, etc.) - temporarily empty until database supports it
+      const other: GitHubRepo[] = [];
+      
+      setOwnedRepositories(owned);
+      setCollaboratorRepositories(collaborator);
+      setOtherRepositories(other);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch repositories');
       console.error('Error fetching user profile:', err);
@@ -193,7 +218,7 @@ export default function GitHubReposSidebar() {
             Try Again
           </button>
         </div>
-      ) : ownedRepositories.length === 0 && collaboratorRepositories.length === 0 ? (
+      ) : ownedRepositories.length === 0 && collaboratorRepositories.length === 0 && otherRepositories.length === 0 ? (
         <div className="text-center py-8">
           <FaGithub className="text-2xl text-[var(--muted)] mb-2 mx-auto" />
           <div className="text-sm text-[var(--muted)] mb-2">No repositories found</div>
@@ -213,7 +238,7 @@ export default function GitHubReposSidebar() {
             <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-1">
               <span>@{profile.github_username}</span>
               <span>•</span>
-              <span>{ownedRepositories.length + collaboratorRepositories.length} repositories</span>
+              <span>{ownedRepositories.length + collaboratorRepositories.length + otherRepositories.length} repositories</span>
             </div>
           )}
 
@@ -290,8 +315,11 @@ export default function GitHubReposSidebar() {
           {/* Collaborator repositories */}
           {collaboratorRepositories.length > 0 && (
             <>
-              <div className="text-xs text-[var(--muted)] mt-3 pt-3 border-t border-[var(--border-color)] text-center">
-                Collaborator repositories
+              <div className="flex items-center gap-2 mt-6 mb-4">
+                <FaGithub className="text-lg text-[var(--foreground)]" />
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                  Your Forked Repositories
+                </h3>
               </div>
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {collaboratorRepositories.slice(0, 10).map((repo) => (
@@ -364,6 +392,82 @@ export default function GitHubReposSidebar() {
             </>
           )}
 
+          {/* Other repositories */}
+          {otherRepositories.length > 0 && (
+            <>
+              <div className="text-xs text-[var(--muted)] mt-3 pt-3 border-t border-[var(--border-color)] text-center">
+                Other repositories
+              </div>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {otherRepositories.slice(0, 10).map((repo) => (
+                  <div
+                    key={repo.full_name}
+                    className="border border-[var(--border-color)] rounded-md p-3 hover:bg-[var(--background)]/50 transition-colors group"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-medium text-[var(--foreground)] truncate">
+                          {repo.name}
+                        </h4>
+                        {repo.description && (
+                          <p className="text-xs text-[var(--muted)] mt-1 line-clamp-2">
+                            {repo.description}
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted)] hover:text-[var(--accent-primary)] ml-2 flex-shrink-0"
+                        title="Open on GitHub"
+                      >
+                        <FaExternalLinkAlt className="text-xs" />
+                      </a>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-3">
+                        {repo.language && (
+                          <div className="flex items-center gap-1">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: getLanguageColor(repo.language) }}
+                            />
+                            <span className="text-[var(--muted)]">{repo.language}</span>
+                          </div>
+                        )}
+                        {repo.stars > 0 && (
+                          <div className="flex items-center gap-1 text-[var(--muted)]">
+                            <FaStar className="text-xs" />
+                            <span>{repo.stars}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-[var(--muted)]">
+                        <FaClock className="text-xs" />
+                        <span>{formatDate(repo.updated_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Show more link if there are more other repos */}
+              {otherRepositories.length > 10 && (
+                <div className="text-center mt-3 pt-3 border-t border-[var(--border-color)]">
+                  <a
+                    href={`https://github.com/${profile?.github_username}?tab=stars`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors"
+                  >
+                    View all {otherRepositories.length} other repositories →
+                  </a>
+                </div>
+              )}
+            </>
+          )}
           {/* Last updated */}
           {profile?.github_repos_updated_at && (
             <div className="text-xs text-[var(--muted)] mt-3 pt-3 border-t border-[var(--border-color)] text-center">

@@ -108,7 +108,6 @@ export default function DeepWikiEditor({
         setWikiStructure(cachedStructures[cacheKey])
         return
       }
-
       try {
         setIsStructureLoading(true)
         const params = new URLSearchParams({
@@ -302,7 +301,7 @@ export default function DeepWikiEditor({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [floatingButton.visible])
-
+  
   const handleLlmSubmit = async () => {
     if (!llmPrompt.trim()) return
 

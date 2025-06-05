@@ -41,7 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
 
         if (event === 'SIGNED_IN' && session?.user) {
-          // Trigger backend pipeline to fetch & store this user's GitHub repos in the background.
+          // Trigger backend pipeline to fetch & store this user's GitHub repos
+          // Do it in the background – we don't await so the redirect is not delayed
           try {
             const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
             const userId = session.user.id
@@ -50,7 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (githubUsername) {
               // Fire-and-forget request – backend decides if it needs to do initial or regular fetch
               fetch(
-                `${apiBaseUrl}/api/user/github-repos/update?user_id=${encodeURIComponent(userId)}&github_username=${encodeURIComponent(githubUsername)}`,
+                `${apiBaseUrl}/api/user/github-repos/update?user_id=${encodeURIComponent(
+                  userId
+                )}&github_username=${encodeURIComponent(githubUsername)}`,
                 {
                   method: 'POST'
                 }
@@ -64,9 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('Unexpected error while triggering repo sync:', err)
           }
 
-          // Remove automatic redirect here to avoid disrupting users who are already navigating within the app.
-          // The login page already handles redirecting authenticated users away.
-
+          console.log('User signed in, redirecting to home')
+          router.push('/')
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out, redirecting to login')
           router.push('/login')
