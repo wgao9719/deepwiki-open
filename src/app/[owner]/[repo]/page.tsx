@@ -170,7 +170,7 @@ export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   // Extract owner and repo from route params
   const owner = params.owner as string;
@@ -1771,6 +1771,13 @@ IMPORTANT:
             <Link href="/" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-1.5 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
               <FaHome /> {messages.repoPage?.home || 'Home'}
             </Link>
+            {/* Admin indicator */}
+            {isAdmin && (
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600 px-2 py-1 rounded-md">
+                <span>👑</span>
+                <span>Administrator</span>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -1977,6 +1984,24 @@ IMPORTANT:
                         !repositoryPermissions.isCollaborator && 
                         (repositoryPermissions.relationship === 'starred' || repositoryPermissions.relationship === 'unknown');
                       
+                      // Administrators can override all permission requirements
+                      if (isAdmin) {
+                        return (
+                          <Link
+                            href={`/${effectiveRepoInfo.owner}/${effectiveRepoInfo.repo}/edit/${currentPageId}`}
+                            onClick={() => {
+                              if (generatedPages[currentPageId]) {
+                                sessionStorage.setItem('editPageContent', generatedPages[currentPageId].content)
+                              }
+                            }}
+                            className="text-sm text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 px-3 py-1.5 rounded-md border border-[var(--accent-primary)]/30"
+                          >
+                            Edit Page
+                          </Link>
+                        );
+                      }
+                      
+                      // For non-admins, check repository permissions
                       if (isOtherRepository) {
                         return (
                           <span className="text-sm text-[var(--muted)] bg-[var(--background)] px-3 py-1.5 rounded-md border border-[var(--border-color)]">

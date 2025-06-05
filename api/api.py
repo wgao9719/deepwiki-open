@@ -714,13 +714,15 @@ async def update_user_github_repos(
         from supabase import create_client
         
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        profile_response = supabase.table('profiles').select('github_repos_updated_at, github_repos').eq('id', user_id).execute()
+        response = supabase.table('profiles').select(
+            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at, updated_at, is_admin'
+        ).eq('id', user_id).execute()
         
-        logger.info(f"📊 [{timestamp}] Profile query response - data count: {len(profile_response.data) if profile_response.data else 0}")
+        logger.info(f"📊 [{timestamp}] Profile query response - data count: {len(response.data) if response.data else 0}")
         
         is_initial_fetch = False
-        if profile_response.data:
-            profile = profile_response.data[0]
+        if response.data:
+            profile = response.data[0]
             # Consider it initial fetch if never updated OR has empty repos array
             is_initial_fetch = not profile.get('github_repos_updated_at') or not profile.get('github_repos') or len(profile.get('github_repos', [])) == 0
             logger.info(f"📋 [{timestamp}] Profile analysis - updated_at: {profile.get('github_repos_updated_at')}, repos_count: {len(profile.get('github_repos', []))}")
@@ -819,7 +821,7 @@ async def get_user_profile(user_id: str):
         
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
         response = supabase.table('profiles').select(
-            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at, updated_at'
+            'id, email, full_name, avatar_url, username, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at, updated_at, is_admin'
         ).eq('id', user_id).execute()
         
         if response.data:

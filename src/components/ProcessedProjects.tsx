@@ -52,7 +52,7 @@ export default function ProcessedProjects({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   // Default messages fallback
   const defaultMessages = {
@@ -248,7 +248,7 @@ export default function ProcessedProjects({
       {projectsList.map((project) => (
         viewMode === 'card' ? (
           <div key={project.id} className="relative p-4 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02]">
-            {showDeleteButton && (
+            {(showDeleteButton || isAdmin) && (
               <button
                 type="button"
                 onClick={() => handleDelete(project)}
@@ -281,7 +281,7 @@ export default function ProcessedProjects({
         ) : (
           <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
 
-            {showDeleteButton && (
+            {(showDeleteButton || isAdmin) && (
               <button
                 type="button"
                 onClick={() => handleDelete(project)}
