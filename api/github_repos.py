@@ -40,7 +40,8 @@ class GitHubReposFetcher:
             raise ValueError("Supabase connection not available. Please configure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
     
     async def fetch_user_repositories(self, github_username: str, github_token: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """
+
+      """
         Fetch repositories for a given GitHub username
         
         Args:
@@ -49,6 +50,7 @@ class GitHubReposFetcher:
             
         Returns:
             Tuple of (owned_repos, collaborator_repos, other_repos) lists
+
         """
         timestamp = datetime.now().isoformat()
         logger.info(f"🚀 [{timestamp}] Starting GitHub API fetch for user: {github_username}")
@@ -76,6 +78,7 @@ class GitHubReposFetcher:
                 logger.info(f"📊 [{timestamp}] Owned repos fetched: {len(owned_repositories)} repositories")
                 
                 logger.info(f"📡 [{timestamp}] Starting to fetch contributed repositories...")
+
                 await self._fetch_contributed_repos(session, github_username, headers, collaborator_repositories)
                 logger.info(f"📊 [{timestamp}] After contributions: {len(collaborator_repositories)} contributed repositories")
                 
@@ -99,6 +102,7 @@ class GitHubReposFetcher:
             logger.info(f"🔄 [{timestamp}] Deduplicating repositories...")
             owned_repositories = self._deduplicate_repos(owned_repositories)
             collaborator_repositories = self._deduplicate_repos(collaborator_repositories)
+
             other_repositories = self._deduplicate_repos(other_repositories)
             
             logger.info(f"✅ [{timestamp}] Final result: {len(owned_repositories)} owned repos, {len(collaborator_repositories)} collaborator repos for {github_username}")
@@ -108,13 +112,14 @@ class GitHubReposFetcher:
         except Exception as e:
             logger.error(f"💥 [{timestamp}] Error fetching repositories for {github_username}: {str(e)}")
             logger.error(f"🔍 [{timestamp}] Exception type: {type(e).__name__}")
+
             return [], [], []
     
     async def _fetch_owned_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
         """Fetch repositories owned by the user"""
         timestamp = datetime.now().isoformat()
         logger.info(f"👤 [{timestamp}] Fetching owned repositories for {username}")
-        
+
         # Keep track of base repos we've already added to avoid duplicates
         base_repos_added = set()
         
@@ -124,6 +129,7 @@ class GitHubReposFetcher:
             while len(repositories) < 100:  # Limit total fetched repos
                 url = f"https://api.github.com/users/{username}/repos"
                 params = {
+
                     'type': 'owner',
                     'sort': 'updated',
                     'direction': 'desc',
@@ -152,6 +158,7 @@ class GitHubReposFetcher:
                         break
                     
                     for repo in repos:
+
                         # API with type='owner' only returns owned repositories
                         repositories.append({
                             'name': repo['name'],
@@ -279,6 +286,7 @@ class GitHubReposFetcher:
                                 # Fetch repository details
                                 repo_details = await self._fetch_repo_details(session, repo_name, headers)
                                 if repo_details:
+
                                     is_owner = repo_details['owner']['login'] == username
                                     repositories.append({
                                         'name': repo_details['name'],
@@ -436,7 +444,7 @@ class GitHubReposFetcher:
                                         'is_fork': detailed_repo['source']['fork'],
                                         'relationship': 'base_of_collaborator_fork'
                                     })
-                    
+                                    
                     logger.info(f"✅ [{timestamp}] Added {len(repos)} collaborator repos from page {page}, total so far: {total_fetched}")
                     page += 1
                     
@@ -693,6 +701,7 @@ class GitHubReposFetcher:
             logger.error(f"Error updating GitHub repos for user {user_id}: {str(e)}")
             return False
     
+
     async def get_user_github_repos(self, user_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Get GitHub repositories for a user from the database
@@ -701,6 +710,7 @@ class GitHubReposFetcher:
             user_id: Supabase user ID
             
         Returns:
+
             Tuple of (owned_repos, collaborator_repos, other_repos) lists
         """
         try:

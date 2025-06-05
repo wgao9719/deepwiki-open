@@ -280,6 +280,7 @@ export default function ProcessedProjects({
           </div>
         ) : (
           <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
+
             {showDeleteButton && (
               <button
                 type="button"

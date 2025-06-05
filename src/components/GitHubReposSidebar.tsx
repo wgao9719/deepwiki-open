@@ -468,7 +468,6 @@ export default function GitHubReposSidebar() {
               )}
             </>
           )}
-
           {/* Last updated */}
           {profile?.github_repos_updated_at && (
             <div className="text-xs text-[var(--muted)] mt-3 pt-3 border-t border-[var(--border-color)] text-center">

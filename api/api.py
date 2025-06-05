@@ -372,6 +372,10 @@ app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=[
 # Add the WebSocket endpoint
 app.add_websocket_route("/ws/chat", handle_websocket_chat)
 
+# Mount the Wiki Edit API (AI editor backend)
+from api.wiki_edit import app as wiki_edit_app
+app.mount("/wiki", wiki_edit_app)
+
 # --- Wiki Cache Helper Functions ---
 
 async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) -> Optional[WikiCacheData]:
@@ -957,3 +961,35 @@ async def get_user_github_repos_status(user_id: str):
     except Exception as e:
         logger.error(f"Error checking GitHub repos status: {e}")
         raise HTTPException(status_code=500, detail="Failed to check repository status")
+
+@app.get("/debug/memory/{user_id}")
+async def debug_memory(
+    user_id: str,
+    query: str = "",
+    namespace: str = "chat",
+    k: int = 5
+):
+    """Inspect semantic memories for a given user.
+
+    Args:
+        user_id: Supabase user identifier.
+        query: Optional search string. If omitted, returns most recent memories.
+        namespace: Memory namespace (e.g. "chat" or "prefs").
+        k: Number of results to return.
+    """
+    try:
+        from api.memory.semantic import vector_store
+        ns = ("mem", namespace, user_id)
+        if query:
+            results = vector_store.search(ns, query, limit=k)
+        else:
+            results = vector_store.search(ns, limit=k)
+        return {
+            "user_id": user_id,
+            "namespace": namespace,
+            "query": query or "(most recent)",
+            "results": results
+        }
+    except Exception as e:
+        return {"error": str(e)}
+

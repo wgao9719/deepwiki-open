@@ -16,4 +16,9 @@ aiohttp>=3.8.4
 boto3>=1.34.0
 websockets>=11.0.3
 supabase>=2.0.0
+langchain>=0.1.8
+chromadb>=0.4.24
+langgraph>=0.0.30
+langmem>=0.0.5
+PyJWT>=2.8.0
 
