@@ -100,9 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (err) {
             console.error('Unexpected error while triggering repo sync:', err)
           }
-
-          console.log('User signed in, redirecting to home')
-          router.push('/')
         } else if (event === 'SIGNED_OUT') {
           // Clear admin status and profile on sign out
           setIsAdmin(false)
