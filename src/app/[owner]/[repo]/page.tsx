@@ -1773,8 +1773,7 @@ IMPORTANT:
             </Link>
             {/* Admin indicator */}
             {isAdmin && (
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600 px-2 py-1 rounded-md">
-                <span>👑</span>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--highlight)]/80 px-2 py-1 rounded-md border border-[var(--highlight)]/20">
                 <span>Administrator</span>
               </div>
             )}
