@@ -374,7 +374,6 @@ export default function Home() {
                 {/* Show processed projects */}
                 <ProcessedProjects
                   showHeader={false}
-                  maxItems={6}
                   messages={messages}
                   className="w-full"
                 />

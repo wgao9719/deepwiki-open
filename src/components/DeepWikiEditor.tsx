@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save, ChevronRight, Sparkles, Send, RefreshCw, PanelLeft, PanelRight,
-  Bot, ChevronDown, ChevronUp, User, Quote, Check, X,
+  Bot, ChevronDown, ChevronUp, User, Quote, Check, X, ArrowLeft,
 } from "lucide-react"
 import Markdown from "./Markdown"
 import WikiTreeView from "./WikiTreeView"
@@ -52,6 +52,11 @@ export interface DeepWikiEditorProps {
   owner?: string
   repo?: string
   pageId?: string
+  /** Repository permissions for access control */
+  isOwner?: boolean
+  isCollaborator?: boolean
+  /** Admin override - admins have full access */
+  isAdmin?: boolean
 }
 
 // Types for wiki structure
@@ -88,6 +93,9 @@ export default function DeepWikiEditor({
   owner,
   repo,
   pageId,
+  isOwner = false,
+  isCollaborator = false,
+  isAdmin = false,
 }: DeepWikiEditorProps) {
   // Initialise the editor with `initialContent` if provided; otherwise use a sample placeholder
   const [content, setContent] = useState(
@@ -112,7 +120,7 @@ export default function DeepWikiEditor({
   const [proposedContent, setProposedContent] = useState<string | null>(null)
   const [originalContentForRevert, setOriginalContentForRevert] = useState<string | null>(null)
   const [wikiMatches, setWikiMatches] = useState<Selection[]>([])
-  
+
   // Add new state for memory functionality
   const [editMemory, setEditMemory] = useState<EditMemory[]>([])
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({})
@@ -121,6 +129,23 @@ export default function DeepWikiEditor({
   const searchParams = useSearchParams()
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
+
+  // Determine editing permissions - Admins have full access to everything
+  const hasManualEditingAccess = isAdmin || isOwner || (!isOwner && !isCollaborator) // Admins override all, owners or unknown permissions have manual editing
+  const hasAIEditingAccess = true // Everyone has AI editing access
+
+  // Function to format page ID into a user-friendly title
+  const formatPageTitle = (pageId: string): string => {
+    if (!pageId) return "Wiki Page"
+    
+    // Handle common patterns like "page-1", "section-2", "chapter-3", etc.
+    const formatted = pageId
+      .replace(/[-_]/g, ' ') // Replace hyphens and underscores with spaces
+      .replace(/\b\w/g, (char) => char.toUpperCase()) // Capitalize first letter of each word
+      .replace(/\b\d+\b/g, (match) => match) // Keep numbers as they are
+    
+    return formatted || "Wiki Page"
+  }
 
   // Sync currentPageId with pageId prop when it changes
   useEffect(() => {
@@ -701,6 +726,9 @@ export default function DeepWikiEditor({
 
   const handleSave = async () => {
     try {
+      setSaveStatus('saving')
+      setSaveMessage('Saving...')
+      
       console.log('Starting save process for:', { owner, repo, pageId })
       
       // First update the local cache
@@ -788,10 +816,25 @@ export default function DeepWikiEditor({
       }
       
       // Show success message
-      alert("Content saved successfully!")
+      setSaveStatus('saved')
+      setSaveMessage('Content saved successfully!')
+      
+      // Auto-hide the message after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle')
+        setSaveMessage('')
+      }, 3000)
+      
     } catch (err) {
       console.error('Error saving content:', err)
-      alert(err instanceof Error ? err.message : 'Failed to save content')
+      setSaveStatus('error')
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to save content')
+      
+      // Auto-hide error message after 5 seconds
+      setTimeout(() => {
+        setSaveStatus('idle')
+        setSaveMessage('')
+      }, 5000)
     }
   }
 
@@ -885,12 +928,21 @@ export default function DeepWikiEditor({
       {/* Header - Fixed */}
       <header className="flex-none z-50 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-6 py-4 shadow-custom">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
+            {owner && repo && (
+              <Link
+                href={`/${owner}/${repo}`}
+                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Wiki
+              </Link>
+            )}
             <Link
               href="/"
               className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
             >
-              <FaHome /> Home
+              <FaHome className="w-4 h-4" /> Home
             </Link>
             <Separator orientation="vertical" className="h-6" />
             <h1 className="text-xl font-semibold text-[var(--foreground)]">DeepWiki Editor</h1>
@@ -914,8 +966,40 @@ export default function DeepWikiEditor({
                 </button>
               </>
             )}
-            <button onClick={handleSave} className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-              <Save className="w-4 h-4" />
+            
+            {/* Save Status Indicator */}
+            {saveStatus !== 'idle' && (
+              <div className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm transition-all duration-200">
+                {saveStatus === 'saving' && (
+                  <>
+                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent"></div>
+                    <span className="text-[var(--muted-foreground)]">Saving...</span>
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <Check className="w-4 h-4 text-green-600" />
+                    <span className="text-green-600">Saved</span>
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <X className="w-4 h-4 text-red-600" />
+                    <span className="text-red-600 max-w-48 truncate" title={saveMessage}>Error</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <button 
+              onClick={handleSave} 
+              disabled={saveStatus === 'saving' || !hasManualEditingAccess}
+              className={`btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${
+                !hasManualEditingAccess ? 'cursor-not-allowed' : ''
+              }`}
+              title={!hasManualEditingAccess ? "Manual saving disabled for collaborators - use AI suggestions instead" : "Save changes"}
+            >
+              <Save className="w-3.5 h-3.5" />
               Save
             </button>
           </div>
@@ -990,8 +1074,13 @@ export default function DeepWikiEditor({
           <div className="flex-1 flex flex-col">
             <div className="flex-none px-6 py-4 border-b border-[var(--border-color)]">
               <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{currentPageId || "Wiki Page"}</h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{formatPageTitle(currentPageId)}</h1>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--highlight)]/80 px-2 py-1 rounded-md border border-[var(--highlight)]/20">
+                      <span>Admin Override</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center space-x-2">
                   {!leftSidebarVisible && (
@@ -1023,15 +1112,32 @@ export default function DeepWikiEditor({
               {/* Side-by-side editor and live preview */}
               <div className="flex-1 flex overflow-hidden">
                 {/* Markdown editor */}
-                <div className="w-1/2 h-full bg-[var(--background)]">
+                <div className="w-1/2 h-full bg-[var(--background)] relative">
+                  {!hasManualEditingAccess && (
+                    <div className="absolute top-4 right-4 z-10 pointer-events-none">
+                      <div className="text-center p-4 bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-lg max-w-xs pointer-events-auto">
+                        <Bot className="w-8 h-8 text-[var(--accent)] mx-auto mb-2" />
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] mb-1">AI Editing Mode</h4>
+                        <p className="text-xs text-[var(--muted-foreground)] mb-2">
+                          Select text and use AI assistance
+                        </p>
+                        <p className="text-xs text-[var(--muted)] italic">
+                          Use AI panel to suggest changes →
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <ScrollArea className="h-full">
                     <Textarea
                       ref={editorRef}
                       value={content}
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value)}
+                      onChange={hasManualEditingAccess ? (e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value) : undefined}
                       onSelect={handleTextSelection}
-                      className="min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm"
-                      placeholder="Start editing your documentation..."
+                      readOnly={!hasManualEditingAccess}
+                      className={`min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm ${
+                        !hasManualEditingAccess ? 'cursor-text' : ''
+                      }`}
+                      placeholder={hasManualEditingAccess ? "Start editing your documentation..." : "Content is read-only - select text and use AI assistant for edits"}
                     />
                   </ScrollArea>
                 </div>
@@ -1147,9 +1253,9 @@ export default function DeepWikiEditor({
 
                       {/* Highlight controls */}
                       {highlightedRanges.length > 0 && (
-                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                           <div className="flex items-center justify-between">
-                                                         <span className="text-sm text-yellow-800 dark:text-yellow-200">
+                            <span className="text-sm text-yellow-800 dark:text-yellow-200">
                                {highlightedRanges.length} text section{highlightedRanges.length > 1 ? 's' : ''} being regenerated
                              </span>
                             <button
@@ -1161,7 +1267,7 @@ export default function DeepWikiEditor({
                           </div>
                         </div>
                       )}
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 items-end">
                         <Textarea
                           value={llmPrompt}
                           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setLlmPrompt(e.target.value)}
@@ -1175,12 +1281,12 @@ export default function DeepWikiEditor({
                             }
                           }}
                           placeholder="Ask the AI assistant..."
-                          className="flex-1 min-h-[40px] max-h-32 border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm"
+                          className="flex-1 min-h-[56px] max-h-32 px-4 py-3 rounded-lg border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm leading-relaxed resize-none transition-all duration-200"
                         />
                         <Button
                           onClick={handleLlmSubmit}
                           disabled={!llmPrompt.trim() || isProcessing}
-                          className="btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-[44px] px-3"
                         >
                           {isProcessing ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
