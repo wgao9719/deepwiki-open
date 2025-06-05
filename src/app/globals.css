@@ -24,7 +24,7 @@ html[data-theme='dark'] {
   --shadow-color: rgba(0, 0, 0, 0.2);
   --accent-primary: #9370db; /* Soft lavender */
   --accent-secondary: #5d4037; /* Warm brown */
-  --border-color: #2c2c2c; /* Dark border */
+  --border-color: #444444; /* Lighter border for better visibility */
   --card-bg: #222222; /* Slightly lighter than background */
   --highlight: #e57373; /* Soft red */
   --muted: #8c8c8c; /* Muted gray */

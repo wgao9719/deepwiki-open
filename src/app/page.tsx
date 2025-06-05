@@ -15,6 +15,7 @@ import { extractUrlPath } from '@/utils/urlDecoder';
 import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
@@ -49,6 +50,7 @@ export default function Home() {
   const router = useRouter();
   const { language, setLanguage, messages } = useLanguage();
   const { projects, isLoading: projectsLoading } = useProcessedProjects();
+  const { user, isAdmin } = useAuth();
 
   // Create a simple translation function
   const t = (key: string, params: Record<string, string | number> = {}): string => {
@@ -270,6 +272,14 @@ export default function Home() {
                     {t('nav.wikiProjects')}
                   </Link>
                 </div>
+                {isAdmin && (
+                  <div className="hidden md:inline-block">
+                    <Link href="/admin"
+                      className="text-xs font-medium text-[var(--highlight)] hover:text-[var(--accent-primary)] hover:underline whitespace-nowrap">
+                      Administrator
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -452,13 +462,16 @@ export default function Home() {
               </div>
               </>
             )}
+
           </div>
         </main>
 
         {/* Sidebar */}
-        <aside className="flex-shrink-0 flex flex-col gap-4">
-          <GitHubReposSidebar />
-          <GitHubCollaboratorReposSidebar />
+        <aside className="flex-shrink-0 w-80 overflow-y-auto max-h-full">
+          <div className="flex flex-col gap-4 sticky top-0">
+            <GitHubReposSidebar />
+            <GitHubCollaboratorReposSidebar />
+          </div>
         </aside>
       </div>
 
@@ -482,6 +495,12 @@ export default function Home() {
                 <FaTwitter className="text-xl" />
               </a>
             </div>
+            {isAdmin && (
+              <Link href="/admin" 
+                className="btn-japanese px-3 py-1.5 text-sm">
+                Administrator
+              </Link>
+            )}
             <ThemeToggle />
             <UserMenu />
           </div>

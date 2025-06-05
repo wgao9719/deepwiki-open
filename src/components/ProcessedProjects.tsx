@@ -27,6 +27,7 @@ interface UserGitHubRepo {
   updated_at: string;
   owner: string;
   is_owner: boolean;
+  is_collaborator: boolean;
   is_fork: boolean;
   relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
@@ -51,7 +52,7 @@ export default function ProcessedProjects({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   // Default messages fallback
   const defaultMessages = {
@@ -64,7 +65,7 @@ export default function ProcessedProjects({
     errorLoading: 'Error loading projects:',
     backToHome: 'Back to Home',
     yourRepositories: 'Your Repositories',
-    yourContributorRepositories: 'Your Contributor Repositories',
+    yourContributorRepositories: 'Collaborated Repositories',
     otherRepositories: 'Other Repositories'
   };
 
@@ -121,8 +122,41 @@ export default function ProcessedProjects({
 
   // Categorize projects based on user repositories
   const categorizedProjects = useMemo(() => {
-    const userRepoNames = new Set(userRepositories.map(repo => repo.name.toLowerCase()));
-    const collaboratorRepoNames = new Set(collaboratorRepositories.map(repo => repo.name.toLowerCase()));
+    // Combine all repositories for comprehensive categorization
+    const allRepositories = [...userRepositories, ...collaboratorRepositories];
+    
+    // Create categorized sets based on repository ownership and relationship
+    const ownedRepoFullNames = new Set(
+      allRepositories
+        .filter(repo => repo.is_owner === true) // User owns this repo (includes both regular repos and forks)
+        .map(repo => repo.full_name.toLowerCase())
+    );
+    
+    const collaboratedRepoFullNames = new Set(
+      allRepositories
+        .filter(repo => 
+          repo.is_owner === false || // User doesn't own this repo (base repos, external collaborations)
+          (repo.relationship && ['base_of_fork', 'base_of_collaborator_fork'].includes(repo.relationship)) // Base repositories
+        )
+        .map(repo => repo.full_name.toLowerCase())
+    );
+    
+    // Debug logging to help verify the new categorization
+    console.log('Owned repositories (includes forks):', allRepositories.filter(r => r.is_owner === true).map(r => ({ 
+      name: r.full_name, 
+      is_fork: r.is_fork, 
+      is_owner: r.is_owner,
+      relationship: r.relationship 
+    })));
+    console.log('Collaborated repositories (base repos and external collaborations):', allRepositories.filter(r => 
+      r.is_owner === false || 
+      (r.relationship && ['base_of_fork', 'base_of_collaborator_fork'].includes(r.relationship))
+    ).map(r => ({ 
+      name: r.full_name, 
+      is_owner: r.is_owner, 
+      is_collaborator: r.is_collaborator, 
+      relationship: r.relationship 
+    })));
     
     let filteredProjects = projects;
     
@@ -143,12 +177,18 @@ export default function ProcessedProjects({
     const otherProjects: ProcessedProject[] = [];
 
     filteredProjects.forEach(project => {
-      if (userRepoNames.has(project.repo.toLowerCase())) {
+      // Create the full repository name for the project
+      const projectFullName = `${project.owner}/${project.repo}`.toLowerCase();
+      
+      if (ownedRepoFullNames.has(projectFullName)) {
         userProjects.push(project);
-      } else if (collaboratorRepoNames.has(project.repo.toLowerCase())) {
+        console.log(`Project ${projectFullName} categorized as USER repository (owned or forked by user)`);
+      } else if (collaboratedRepoFullNames.has(projectFullName)) {
         collaboratorProjects.push(project);
+        console.log(`Project ${projectFullName} categorized as COLLABORATED repository (base repo or external collaboration)`);
       } else {
         otherProjects.push(project);
+        console.log(`Project ${projectFullName} categorized as OTHER repository`);
       }
     });
 
@@ -168,8 +208,8 @@ export default function ProcessedProjects({
       userProjects: finalUserProjects,
       collaboratorProjects: finalCollaboratorProjects,
       otherProjects: finalOtherProjects,
-      hasUserRepos: userRepoNames.size > 0 && finalUserProjects.length > 0,
-      hasCollaboratorRepos: collaboratorRepoNames.size > 0 && finalCollaboratorProjects.length > 0
+      hasUserRepos: ownedRepoFullNames.size > 0 && finalUserProjects.length > 0,
+      hasCollaboratorRepos: collaboratedRepoFullNames.size > 0 && finalCollaboratorProjects.length > 0
     };
   }, [projects, userRepositories, collaboratorRepositories, searchQuery, maxItems]);
 
@@ -203,19 +243,21 @@ export default function ProcessedProjects({
     }
   };
 
-  const renderProjectsList = (projectsList: ProcessedProject[]) => (
+  const renderProjectsList = (projectsList: ProcessedProject[], showDeleteButton: boolean = true) => (
     <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-2'}>
       {projectsList.map((project) => (
         viewMode === 'card' ? (
           <div key={project.id} className="relative p-4 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02]">
-            <button
-              type="button"
-              onClick={() => handleDelete(project)}
-              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-              title="Delete project"
-            >
-              <FaTimes className="h-4 w-4" />
-            </button>
+            {(showDeleteButton || isAdmin) && (
+              <button
+                type="button"
+                onClick={() => handleDelete(project)}
+                className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                title="Delete project"
+              >
+                <FaTimes className="h-4 w-4" />
+              </button>
+            )}
             <Link
               href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
               className="block"
@@ -238,14 +280,17 @@ export default function ProcessedProjects({
           </div>
         ) : (
           <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
-            <button
-              type="button"
-              onClick={() => handleDelete(project)}
-              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-              title="Delete project"
-            >
-              <FaTimes className="h-4 w-4" />
-            </button>
+
+            {(showDeleteButton || isAdmin) && (
+              <button
+                type="button"
+                onClick={() => handleDelete(project)}
+                className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                title="Delete project"
+              >
+                <FaTimes className="h-4 w-4" />
+              </button>
+            )}
             <Link
               href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
               className="flex items-center justify-between"
@@ -358,7 +403,7 @@ export default function ProcessedProjects({
                   {categorizedProjects.collaboratorProjects.length}
                 </span>
               </div>
-              {renderProjectsList(categorizedProjects.collaboratorProjects)}
+              {renderProjectsList(categorizedProjects.collaboratorProjects, false)}
             </div>
           )}
 
@@ -373,7 +418,7 @@ export default function ProcessedProjects({
                   </span>
                 </div>
               )}
-              {renderProjectsList(categorizedProjects.otherProjects)}
+              {renderProjectsList(categorizedProjects.otherProjects, false)}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -9,6 +9,8 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
+  isAdmin: boolean
+  profile: any | null
   signInWithGitHub: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -19,7 +21,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [profile, setProfile] = useState<any | null>(null)
   const router = useRouter()
+
+  // Function to fetch user profile and set admin status
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
+      const response = await fetch(`${apiBaseUrl}/api/user/profile/${userId}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setProfile(data.profile)
+        setIsAdmin(data.profile?.is_admin || false)
+      } else {
+        console.error('Failed to fetch user profile:', response.status)
+        setProfile(null)
+        setIsAdmin(false)
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error)
+      setProfile(null)
+      setIsAdmin(false)
+    }
+  }, [])
 
   useEffect(() => {
     // Get initial session
@@ -28,6 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)  
       setLoading(false)
+      
+      // Fetch user profile if authenticated
+      if (session?.user) {
+        await fetchUserProfile(session.user.id)
+      }
     }
 
     getInitialSession()
@@ -41,7 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
 
         if (event === 'SIGNED_IN' && session?.user) {
-          // Trigger backend pipeline to fetch & store this user's GitHub repos in the background.
+          // Fetch user profile to get admin status
+          await fetchUserProfile(session.user.id)
+          
+          // Trigger backend pipeline to fetch & store this user's GitHub repos
+          // Do it in the background – we don't await so the redirect is not delayed
           try {
             const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
             const userId = session.user.id
@@ -50,7 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (githubUsername) {
               // Fire-and-forget request – backend decides if it needs to do initial or regular fetch
               fetch(
-                `${apiBaseUrl}/api/user/github-repos/update?user_id=${encodeURIComponent(userId)}&github_username=${encodeURIComponent(githubUsername)}`,
+                `${apiBaseUrl}/api/user/github-repos/update?user_id=${encodeURIComponent(
+                  userId
+                )}&github_username=${encodeURIComponent(githubUsername)}`,
                 {
                   method: 'POST'
                 }
@@ -64,10 +101,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('Unexpected error while triggering repo sync:', err)
           }
 
-          // Remove automatic redirect here to avoid disrupting users who are already navigating within the app.
-          // The login page already handles redirecting authenticated users away.
-
+          console.log('User signed in, redirecting to home')
+          router.push('/')
         } else if (event === 'SIGNED_OUT') {
+          // Clear admin status and profile on sign out
+          setIsAdmin(false)
+          setProfile(null)
           console.log('User signed out, redirecting to login')
           router.push('/login')
         }
@@ -77,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [router])
+  }, [router, fetchUserProfile])
 
   const signInWithGitHub = async () => {
     console.log('=== GITHUB SIGNIN DEBUG ===')
@@ -129,6 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     session,
     loading,
+    isAdmin,
+    profile,
     signInWithGitHub,
     signOut
   }

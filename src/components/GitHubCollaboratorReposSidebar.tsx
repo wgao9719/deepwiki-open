@@ -15,6 +15,7 @@ interface GitHubRepo {
   updated_at: string;
   owner: string;
   is_owner: boolean;
+  is_collaborator: boolean;
   is_fork: boolean;
   relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
@@ -151,7 +152,7 @@ export default function GitHubCollaboratorReposSidebar() {
   }
 
   return (
-    <div className="w-80 bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-custom p-4 h-fit sticky top-8">
+    <div className="w-full bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-custom p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -201,7 +202,7 @@ export default function GitHubCollaboratorReposSidebar() {
           )}
 
           {/* Repository list */}
-          <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="space-y-3">
             {collaboratorRepositories.slice(0, 10).map((repo) => (
               <div
                 key={repo.full_name}
