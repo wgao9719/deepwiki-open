@@ -40,7 +40,7 @@ export default function EditWikiPage() {
           repo_type: repoType,
           language,
         })
-        const response = await fetch(`/api/wiki_cache?${params.toString()}`)
+        const response = await fetch(`/api/wiki_cache?${params.toString()}`, { cache: 'no-store' })
 
         if (response.ok) {
           const cachedData = await response.json()

@@ -657,7 +657,7 @@ IMPORTANT: The wiki content will be generated in ${language === 'en' ? 'English'
             language === 'ja' ? 'Japanese (日本語)' :
             language === 'zh' ? 'Mandarin Chinese (中文)' :
             language === 'es' ? 'Spanish (Español)' :
-            language === 'kr' ? 'Korean (한国語)' :
+            language === 'kr' ? 'Korean (한국語)' :
             language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'} language.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
@@ -742,7 +742,6 @@ Return your analysis in the following XML format:
   </pages>
 </wiki_structure>
 `}
-
 IMPORTANT FORMATTING INSTRUCTIONS:
 - Return ONLY the valid XML structure specified above
 - DO NOT wrap the XML in markdown code blocks (no \`\`\` or \`\`\`xml)
@@ -857,13 +856,50 @@ IMPORTANT:
       // Clean up markdown delimiters
       responseText = responseText.replace(/^```(?:xml)?\s*/i, '').replace(/```\s*$/i, '');
 
+      // Debug logging
+      console.log('Response text before XML extraction:', responseText.substring(0, 500) + '...');
+
       // Extract wiki structure from response
-      const xmlMatch = responseText.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/m);
+      // Try different possible formats
+      let xmlMatch = responseText.match(/<wiki_structure[^>]*>[\s\S]*?<\/wiki_structure>/i);
+      let xmlText = '';
+
       if (!xmlMatch) {
+        // Try finding JSON-like structure
+        try {
+          const parsedResponse = JSON.parse(responseText);
+          if (parsedResponse.wiki_structure) {
+            // Convert JSON to XML format
+            const convertToXml = (obj: any): string => {
+              if (typeof obj !== 'object' || obj === null) return String(obj);
+              return Object.entries(obj).map(([key, value]) => {
+                if (Array.isArray(value)) {
+                  return value.map(item => `<${key}>${convertToXml(item)}</${key}>`).join('');
+                }
+                return `<${key}>${convertToXml(value)}</${key}>`;
+              }).join('');
+            };
+            xmlText = `<wiki_structure>${convertToXml(parsedResponse.wiki_structure)}</wiki_structure>`;
+            xmlMatch = [xmlText];
+            console.log('Converted JSON to XML structure');
+          }
+        } catch (e) {
+          console.log('Response is not valid JSON:', e);
+        }
+      }
+
+      if (!xmlMatch) {
+        console.error('XML extraction failed. Response format:', {
+          length: responseText.length,
+          firstChars: responseText.substring(0, 100),
+          lastChars: responseText.substring(responseText.length - 100),
+          hasWikiStructure: responseText.includes('wiki_structure'),
+          contentType: typeof responseText
+        });
         throw new Error('No valid XML found in response');
       }
 
-      let xmlText = xmlMatch[0];
+      xmlText = xmlMatch[0];
       xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       // Try parsing with DOMParser
       const parser = new DOMParser();
@@ -1531,7 +1567,9 @@ IMPORTANT:
             language: language,
             comprehensive: isComprehensiveView.toString(),
           });
-          const response = await fetch(`/api/wiki_cache?${params.toString()}`);
+          const response = await fetch(`/api/wiki_cache?${params.toString()}`, {
+            cache: 'no-store',
+          });
 
           if (response.ok) {
             const cachedData = await response.json(); // Returns null if no cache

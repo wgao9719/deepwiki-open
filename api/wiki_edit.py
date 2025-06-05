@@ -2,6 +2,7 @@ import logging
 import os
 from typing import List, Optional
 from urllib.parse import unquote
+import re
 
 import google.generativeai as genai
 from adalflow.components.model_client.ollama_client import OllamaClient
@@ -18,6 +19,7 @@ from api.openai_client import OpenAIClient
 from api.openrouter_client import OpenRouterClient
 from api.bedrock_client import BedrockClient
 from api.rag import RAG
+from api.supabase_storage import download_wiki_cache_from_supabase
 
 # Unified logging setup
 from api.logging_config import setup_logging
@@ -54,8 +56,11 @@ class WikiEditRequest(BaseModel):
     """Model for requesting wiki editing suggestions."""
     repo_url: str = Field(..., description="URL of the repository")
     current_page_title: str = Field(..., description="Title of the current wiki page being edited")
-    current_page_content: str = Field(..., description="Current content of the wiki page")
+    current_page_content: Optional[str] = Field(None, description="Current content of the wiki page (if not provided, will be fetched from wiki cache)")
     current_page_files: List[str] = Field(..., description="List of files related to this wiki page")
+    # Optional: Specific chunk of the wiki page that the user highlighted / pasted into the edit request
+    # If this is provided, the model should ONLY modify this chunk and leave the rest of the document untouched.
+    highlighted_content: Optional[str] = Field(None, description="Exact chunk of the wiki page that the user wants to modify exclusively")
     edit_request: str = Field(..., description="The user's editing request or instruction")
     token: Optional[str] = Field(None, description="Personal access token for private repositories")
     type: Optional[str] = Field("github", description="Type of repository")
@@ -72,6 +77,9 @@ class WikiEditRequest(BaseModel):
 
     # user identification for personalized memory
     user_id: Optional[str] = Field(None, description="Authenticated user identifier")
+
+    # Optional: Pass the complete wiki content (all pages) so that the model can reference
+    entire_wiki_content: Optional[str] = Field(None, description="Concatenated markdown of the entire repository wiki for additional context")
 
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
@@ -114,7 +122,69 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
 
         request.provider = provider
 
-        total_content = request.current_page_content + request.edit_request
+        # -----------------------------
+        # Retrieve full wiki content from Supabase cache
+        # -----------------------------
+        try:
+            def _extract_owner_repo(url: str):
+                """Extract owner and repo name from repository URL (supports GitHub/GitLab https or ssh formats)."""
+                if not url:
+                    return None, None
+                # Strip possible .git suffix
+                url_no_git = url.rstrip('.git')
+                # Use regex to capture owner and repo between domain and optional .git
+                match = re.search(r"(?:github\.com|gitlab\.com)[/:](?P<owner>[^/]+)/(?P<repo>[^/]+)$", url_no_git)
+                if match:
+                    return match.group('owner'), match.group('repo')
+                return None, None
+
+            owner, repo = _extract_owner_repo(request.repo_url)
+            if owner and repo:
+                wiki_cache = await download_wiki_cache_from_supabase(owner, repo, request.type or 'github', request.language or 'en')
+                if wiki_cache:
+                    pages_content = []
+                    fetched_current_page_content = None
+                    # wiki_structure pages
+                    try:
+                        wiki_structure = wiki_cache.get('wiki_structure', {})
+                        for page in wiki_structure.get('pages', []):
+                            title = page.get('title') or page.get('id') or 'Untitled'
+                            content = page.get('content', '')
+                            pages_content.append(f"# {title}\n\n{content}")
+                            # capture current page content if title matches
+                            if not fetched_current_page_content and title.strip().lower() == (request.current_page_title or '').strip().lower():
+                                fetched_current_page_content = content
+                    except Exception as e:
+                        logger.warning(f"Error processing wiki_structure pages: {e}")
+                    # generated_pages may contain additional pages
+                    try:
+                        for page in (wiki_cache.get('generated_pages') or {}).values():
+                            title = page.get('title') or page.get('id') or 'Untitled'
+                            content = page.get('content', '')
+                            pages_content.append(f"# {title}\n\n{content}")
+                            if not fetched_current_page_content and title.strip().lower() == (request.current_page_title or '').strip().lower():
+                                fetched_current_page_content = content
+                    except Exception as e:
+                        logger.warning(f"Error processing generated_pages: {e}")
+
+                    if fetched_current_page_content and not request.current_page_content:
+                        request.current_page_content = fetched_current_page_content
+                        logger.info("Auto-populated current_page_content from Supabase cache")
+
+                    if pages_content:
+                        request.entire_wiki_content = "\n\n---\n\n".join(pages_content)
+                        logger.info(f"Loaded entire wiki content comprising {len(pages_content)} pages ({len(request.entire_wiki_content)} characters)")
+                    else:
+                        logger.warning("No wiki pages found in Supabase cache")
+                else:
+                    logger.warning(f"No wiki cache found in Supabase for {owner}/{repo}")
+            else:
+                logger.warning(f"Could not extract owner/repo from URL: {request.repo_url}")
+        except Exception as wiki_err:
+            logger.warning(f"Failed to retrieve full wiki content from Supabase: {wiki_err}")
+
+        # Include highlighted_content in token counting so we warn on very large requests
+        total_content = (request.current_page_content or "") + (request.highlighted_content or "") + request.edit_request + (request.entire_wiki_content or "")
         tokens = count_tokens(total_content, request.provider == "ollama")
         logger.info(f"Wiki edit request size: {tokens} tokens")
 
@@ -199,41 +269,55 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
 
         system_prompt = f"""<role>
 You are an expert technical writer and AI assistant specialized in editing and improving software documentation wikis.
-You provide direct, actionable editing suggestions based on codebase analysis. You MUST produce the highest quality writing possible that is grounded in the actual codebase and looks as human-written as possible.
-IMPORTANT: You MUST respond in {language_name} language.
+You provide direct, actionable editing suggestions based on codebase analysis. Your edits MUST have good fit with the existing codebase and not overlap too much with the existing wiki. You MUST produce the highest quality writing possible that is grounded in the actual codebase and looks as human-written as possible.
+IMPORTANT: You MUST respond in {language_name} language. If {request.highlighted_content} is not empty, the you can ONLY edit the text in {request.highlighted_content} and you CANNOT edit anything else or you will be fired.
 </role>
 
 <guidelines>
 - You are editing a wiki page titled: "{request.current_page_title}"
 - The page primarily covers these files: {', '.join(request.current_page_files)}
+- The current page the user wants to edit on is provided here: "{request.current_page_content}"
+- Use the current page content and read the user prompt thoroughly to understand exactly where and what the edit is supposed to implement
+- Use the current page content and the user query to target exactly where the user wants to edit and implement the best edit possible at that location
+- If the user uses the word "lengthen" in their query for a specific location or section on the current page content; add more relevant, accurate and organic detail to increase the section size by 50%
 - Focus on providing specific, actionable editing suggestions
-- Use the provided codebase context to ensure accuracy
+- This is the context for the entire wiki documentation: "{request.entire_wiki_content}"  
+- Use the full wiki context to make sure that the edits are tailored specifically to this wiki and the edits don't overlap with existing information
+- Use the full wiki context to provide novel and organic edits that make sense with respect to the existing codebase
+- Use the provided codebase context and the full wiki context to ensure accuracy and consistency across pages
 - Suggest concrete improvements, additions, or modifications
 - Maintain existing markdown structure and formatting style
 - When suggesting code examples, use real code from the repository
 - Provide clear rationale for each suggestion
 - Structure your response with clear headings and bullet points
 - Be specific about which sections to modify and how
+- If a <selected_chunk> is provided, ONLY modify that chunk according to the <edit_request>. All other content in the page must remain IDENTICAL.
+- Do NOT delete to or add to any other part of the document other than <selected_chunk> when <selected_chunk> is present.
+- Do NOT rewrite or re-format other parts of the document when <selected_chunk> is present.
 </guidelines>
 
 <response_format>
-Structure your response as:
-## Editing Suggestions
+Return exactly two top-level markdown sections in this order:
 
-### 1. [Suggestion Category]
-- **What to change:** [Specific description]
-- **Why:** [Rationale based on codebase]
-- **How:** [Specific implementation]
+### Editing Suggestions
+* List each change with **What to change** [Specficic Description of the change] and **Why** [Rational based on Codebase and Wiki] bullets.
 
-### 2. [Next Suggestion Category]
-...
+### Revised Document
+The complete revised markdown for the entire page **after** applying every suggestion above.
 
-## Additional Recommendations
-[Any broader suggestions for the page]
+No extra prose before or after these two sections.
 </response_format>"""
 
         full_prompt = f"{system_prompt}\n\n"
-        full_prompt += f"<current_page_content>\n{request.current_page_content}\n</current_page_content>\n\n"
+        full_prompt += f"<current_page_content>\n{request.current_page_content or ''}\n</current_page_content>\n\n"
+
+        # Inject the highlighted chunk if supplied
+        if request.highlighted_content:
+            full_prompt += f"<selected_chunk>\n{request.highlighted_content}\n</selected_chunk>\n\n"
+
+        # Append the full wiki context if supplied by the caller
+        if request.entire_wiki_content:
+            full_prompt += f"<full_wiki_context>\n{request.entire_wiki_content}\n</full_wiki_context>\n\n"
 
         if context_text.strip():
             full_prompt += f"<codebase_context>\n{context_text}\n</codebase_context>\n\n"
