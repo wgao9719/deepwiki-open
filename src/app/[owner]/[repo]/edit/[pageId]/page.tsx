@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import DeepWikiEditor from "@/components/DeepWikiEditor"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface RouteParams {
   owner: string
@@ -13,54 +14,119 @@ interface RouteParams {
 
 export default function EditWikiPage() {
   const params = useParams() as unknown as RouteParams
-  const { owner, repo, pageId } = params
   const searchParams = useSearchParams()
-  const repoType = searchParams.get('type') || 'github'
-  const language = searchParams.get('language') || 'en'
+  const { user, isAdmin } = useAuth()
+  const { owner, repo, pageId } = params
 
-  const [initialContent, setInitialContent] = useState<string>("")
+  const [initialContent, setInitialContent] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Repository permissions state
+  const [repositoryPermissions, setRepositoryPermissions] = useState<{
+    isOwner: boolean;
+    isCollaborator: boolean;
+    relationship?: string;
+  } | null>(null)
+
+  // Check repository permissions
+  useEffect(() => {
+    const checkRepositoryPermissions = async () => {
+      if (!user?.id || !owner || !repo) {
+        setRepositoryPermissions(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/user/profile/${user.id}`);
+        if (!response.ok) {
+          setRepositoryPermissions(null);
+          return;
+        }
+
+        const data = await response.json();
+        const profile = data.profile;
+        
+        if (!profile) {
+          setRepositoryPermissions(null);
+          return;
+        }
+
+        // Combine all repositories
+        const allRepos = [
+          ...(profile.github_repos || []),
+          ...(profile.github_collaborator_repos || []),
+          ...(profile.github_other_repos || [])
+        ];
+
+        // Find the current repository
+        const currentRepoFullName = `${owner}/${repo}`;
+        const currentRepo = allRepos.find(r => r.full_name === currentRepoFullName);
+
+        if (currentRepo) {
+          setRepositoryPermissions({
+            isOwner: currentRepo.is_owner || false,
+            isCollaborator: currentRepo.is_collaborator || false,
+            relationship: currentRepo.relationship
+          });
+        } else {
+          // Repository not found in user's repos - treat as unknown
+          setRepositoryPermissions({
+            isOwner: false,
+            isCollaborator: false,
+            relationship: 'unknown'
+          });
+        }
+      } catch (error) {
+        console.error('Error checking repository permissions:', error);
+        setRepositoryPermissions(null);
+      }
+    };
+
+    checkRepositoryPermissions();
+  }, [user?.id, owner, repo]);
 
   useEffect(() => {
-    const fetchPageContent = async () => {
+    const loadPageContent = async () => {
       try {
-        // First try to get content from sessionStorage for this specific page
-        const stored = sessionStorage.getItem(`editPageContent_${pageId}`)
-        if (stored) {
-          setInitialContent(stored)
+        setIsLoading(true)
+        setError(null)
+
+        // First check sessionStorage for cached content
+        const cachedContent = sessionStorage.getItem(`editPageContent_${pageId}`)
+        if (cachedContent) {
+          setInitialContent(cachedContent)
           setIsLoading(false)
           return
         }
 
-        // If not in sessionStorage, fetch from Supabase
+        // If no cached content, fetch from API
         const params = new URLSearchParams({
           owner,
           repo,
-          repo_type: repoType,
-          language,
+          repo_type: searchParams?.get("type") || "github",
+          language: searchParams?.get("language") || "en",
         })
-        const response = await fetch(`/api/wiki_cache?${params.toString()}`, { cache: 'no-store' })
 
-        if (response.ok) {
-          const cachedData = await response.json()
-          if (cachedData?.generated_pages?.[pageId]?.content) {
-            setInitialContent(cachedData.generated_pages[pageId].content)
-          } else {
-            setError("Page content not found in cache")
-          }
-        } else {
-          setError("Failed to fetch page content")
+        const response = await fetch(`/api/wiki_cache?${params.toString()}`)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch page content: ${response.status}`)
         }
+
+        const data = await response.json()
+        const pageContent = data?.generated_pages?.[pageId]?.content || ""
+        setInitialContent(pageContent)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred while fetching page content")
+        setError(err instanceof Error ? err.message : "Failed to load page content")
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchPageContent()
-  }, [owner, repo, pageId, repoType, language])
+    if (pageId) {
+      loadPageContent()
+    }
+  }, [owner, repo, pageId, searchParams])
 
   if (isLoading) {
     return (
@@ -95,6 +161,9 @@ export default function EditWikiPage() {
       owner={owner}
       repo={repo}
       pageId={pageId}
+      isOwner={repositoryPermissions?.isOwner || false}
+      isCollaborator={repositoryPermissions?.isCollaborator || false}
+      isAdmin={isAdmin}
     />
   )
 } 

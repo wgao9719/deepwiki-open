@@ -36,6 +36,11 @@ export interface DeepWikiEditorProps {
   owner?: string
   repo?: string
   pageId?: string
+  /** Repository permissions for access control */
+  isOwner?: boolean
+  isCollaborator?: boolean
+  /** Admin override - admins have full access */
+  isAdmin?: boolean
 }
 
 // Types for wiki structure
@@ -72,6 +77,9 @@ export default function DeepWikiEditor({
   owner,
   repo,
   pageId,
+  isOwner = false,
+  isCollaborator = false,
+  isAdmin = false,
 }: DeepWikiEditorProps) {
   // Initialise the editor with `initialContent` if provided; otherwise use a sample placeholder
   const [content, setContent] = useState(
@@ -103,6 +111,10 @@ export default function DeepWikiEditor({
   const searchParams = useSearchParams()
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
+
+  // Determine editing permissions - Admins have full access to everything
+  const hasManualEditingAccess = isAdmin || isOwner || (!isOwner && !isCollaborator) // Admins override all, owners or unknown permissions have manual editing
+  const hasAIEditingAccess = true // Everyone has AI editing access
 
   // Function to format page ID into a user-friendly title
   const formatPageTitle = (pageId: string): string => {
@@ -711,21 +723,21 @@ export default function DeepWikiEditor({
       {/* Header - Fixed */}
       <header className="flex-none z-50 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-6 py-4 shadow-custom">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
             {owner && repo && (
               <Link
                 href={`/${owner}/${repo}`}
-                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5 text-sm"
+                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-4 h-4" />
                 Back to Wiki
               </Link>
             )}
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5 text-sm"
+              className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
             >
-              <FaHome className="w-3.5 h-3.5" /> Home
+              <FaHome className="w-4 h-4" /> Home
             </Link>
             <Separator orientation="vertical" className="h-6" />
             <h1 className="text-xl font-semibold text-[var(--foreground)]">DeepWiki Editor</h1>
@@ -776,8 +788,11 @@ export default function DeepWikiEditor({
             
             <button 
               onClick={handleSave} 
-              disabled={saveStatus === 'saving'}
-              className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              disabled={saveStatus === 'saving' || !hasManualEditingAccess}
+              className={`btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm ${
+                !hasManualEditingAccess ? 'cursor-not-allowed' : ''
+              }`}
+              title={!hasManualEditingAccess ? "Manual saving disabled for collaborators - use AI suggestions instead" : "Save changes"}
             >
               <Save className="w-3.5 h-3.5" />
               Save
@@ -854,8 +869,13 @@ export default function DeepWikiEditor({
           <div className="flex-1 flex flex-col">
             <div className="flex-none px-6 py-4 border-b border-[var(--border-color)]">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center gap-3">
                   <h1 className="text-xl font-semibold text-[var(--foreground)]">{formatPageTitle(currentPageId)}</h1>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-white bg-[var(--highlight)]/80 px-2 py-1 rounded-md border border-[var(--highlight)]/20">
+                      <span>Admin Override</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center space-x-2">
                   {!leftSidebarVisible && (
@@ -887,15 +907,32 @@ export default function DeepWikiEditor({
               {/* Side-by-side editor and live preview */}
               <div className="flex-1 flex overflow-hidden">
                 {/* Markdown editor */}
-                <div className="w-1/2 h-full bg-[var(--background)]">
+                <div className="w-1/2 h-full bg-[var(--background)] relative">
+                  {!hasManualEditingAccess && (
+                    <div className="absolute top-4 right-4 z-10 pointer-events-none">
+                      <div className="text-center p-4 bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-lg max-w-xs pointer-events-auto">
+                        <Bot className="w-8 h-8 text-[var(--accent)] mx-auto mb-2" />
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] mb-1">AI Editing Mode</h4>
+                        <p className="text-xs text-[var(--muted-foreground)] mb-2">
+                          Select text and use AI assistance
+                        </p>
+                        <p className="text-xs text-[var(--muted)] italic">
+                          Use AI panel to suggest changes →
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <ScrollArea className="h-full">
                     <Textarea
                       ref={editorRef}
                       value={content}
-                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value)}
+                      onChange={hasManualEditingAccess ? (e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value) : undefined}
                       onSelect={handleTextSelection}
-                      className="min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm"
-                      placeholder="Start editing your documentation..."
+                      readOnly={!hasManualEditingAccess}
+                      className={`min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm ${
+                        !hasManualEditingAccess ? 'cursor-text' : ''
+                      }`}
+                      placeholder={hasManualEditingAccess ? "Start editing your documentation..." : "Content is read-only - select text and use AI assistant for edits"}
                     />
                   </ScrollArea>
                 </div>
