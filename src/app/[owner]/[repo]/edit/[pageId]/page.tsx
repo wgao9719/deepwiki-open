@@ -25,8 +25,8 @@ export default function EditWikiPage() {
   useEffect(() => {
     const fetchPageContent = async () => {
       try {
-        // First try to get content from sessionStorage (for immediate edits)
-        const stored = sessionStorage.getItem("editPageContent")
+        // First try to get content from sessionStorage for this specific page
+        const stored = sessionStorage.getItem(`editPageContent_${pageId}`)
         if (stored) {
           setInitialContent(stored)
           setIsLoading(false)

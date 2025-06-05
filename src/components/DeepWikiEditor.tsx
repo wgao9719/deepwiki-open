@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save, ChevronRight, Sparkles, Send, RefreshCw, PanelLeft, PanelRight,
-  Bot,
+  Bot, ChevronDown, ChevronUp, User, Quote,
 } from "lucide-react"
 import Markdown from "./Markdown"
 import WikiTreeView from "./WikiTreeView"
@@ -20,6 +20,12 @@ interface Selection {
   text: string
   start: number
   end: number
+}
+
+interface FloatingButton {
+  visible: boolean
+  x: number
+  y: number
 }
 
 export interface DeepWikiEditorProps {
@@ -78,8 +84,13 @@ export default function DeepWikiEditor({
   const [isProcessing, setIsProcessing] = useState(false)
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
   const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
+  const [chatHistory, setChatHistory] = useState<Array<{prompt: string, response: string}>>([])
+  const [floatingButton, setFloatingButton] = useState<FloatingButton>({ visible: false, x: 0, y: 0 })
+  const [isAIPanelExpanded, setIsAIPanelExpanded] = useState(false)
   const [wikiStructure, setWikiStructure] = useState<WikiStructure | null>(null)
   const [isStructureLoading, setIsStructureLoading] = useState(false)
+  const [cachedStructures, setCachedStructures] = useState<Record<string, WikiStructure>>({})
+  const [highlightedRanges, setHighlightedRanges] = useState<Selection[]>([])
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -90,6 +101,14 @@ export default function DeepWikiEditor({
   useEffect(() => {
     const fetchStructure = async () => {
       if (!owner || !repo) return
+      
+      // Check if we already have the structure cached
+      const cacheKey = `${owner}/${repo}`
+      if (cachedStructures[cacheKey]) {
+        setWikiStructure(cachedStructures[cacheKey])
+        return
+      }
+
       try {
         setIsStructureLoading(true)
         const params = new URLSearchParams({
@@ -103,6 +122,11 @@ export default function DeepWikiEditor({
           const data = await res.json()
           if (data?.wiki_structure) {
             setWikiStructure(data.wiki_structure)
+            // Cache the structure
+            setCachedStructures(prev => ({
+              ...prev,
+              [cacheKey]: data.wiki_structure
+            }))
           }
         } else {
           console.error("Failed to fetch wiki_structure")
@@ -114,44 +138,170 @@ export default function DeepWikiEditor({
       }
     }
     fetchStructure()
-  }, [owner, repo, searchParams])
+  }, [owner, repo, searchParams, cachedStructures])
 
   // When navigating to a different page, refresh editor state
   useEffect(() => {
-    setContent(initialContent || "")
-    setSelectedText(null)
-    setLlmPrompt("")
-    setLlmResponse("")
-  }, [initialContent, pageId])
+    if (initialContent) {
+      setContent(initialContent)
+      setSelectedText(null)
+      setLlmPrompt("")
+      setLlmResponse("")
+    }
+  }, [initialContent])
 
-  const handlePageSelect = (targetPageId: string) => {
+  const handlePageSelect = async (targetPageId: string) => {
     if (!owner || !repo || targetPageId === pageId) return
-    // Check unsaved changes (optional):
-    // TODO: prompt user if content changed and not saved.
-    const params = new URLSearchParams(searchParams?.toString())
-    router.push(`/${owner}/${repo}/edit/${targetPageId}?${params.toString()}`)
+
+    try {
+      // Fetch the new page content
+      const params = new URLSearchParams({
+        owner,
+        repo,
+        repo_type: searchParams?.get("type") || "github",
+        language: searchParams?.get("language") || "en",
+      })
+      
+      const res = await fetch(`/api/wiki_cache?${params.toString()}`)
+      if (!res.ok) {
+        throw new Error('Failed to fetch page content')
+      }
+      
+      const data = await res.json()
+      const newPageContent = data?.generated_pages?.[targetPageId]?.content || ""
+
+      // Update the URL without a full page reload
+      const newParams = new URLSearchParams(searchParams?.toString())
+      newParams.set('page', targetPageId)
+      window.history.pushState({}, '', `/${owner}/${repo}/edit/${targetPageId}?${newParams.toString()}`)
+
+      // Update the content and pageId
+      setContent(newPageContent)
+      setSelectedText(null)
+      setLlmPrompt("")
+      setLlmResponse("")
+
+      // Update wiki structure if it's not already cached
+      const cacheKey = `${owner}/${repo}`
+      if (data?.wiki_structure && !cachedStructures[cacheKey]) {
+        setWikiStructure(data.wiki_structure)
+        setCachedStructures(prev => ({
+          ...prev,
+          [cacheKey]: data.wiki_structure
+        }))
+      }
+    } catch (err) {
+      console.error('Error loading page:', err)
+    }
   }
 
+  // Add event listener for browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = async () => {
+      const pathParts = window.location.pathname.split('/')
+      const newPageId = pathParts[pathParts.length - 1]
+      if (newPageId && newPageId !== pageId) {
+        await handlePageSelect(newPageId)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [pageId])
+
   const handleTextSelection = useCallback(() => {
+    console.log('handleTextSelection called')
     if (editorRef.current) {
       const start = editorRef.current.selectionStart
       const end = editorRef.current.selectionEnd
+      console.log('Selection range:', start, end)
 
       if (start !== end) {
         const selectedText = content.substring(start, end)
+        console.log('Selected text:', selectedText)
         setSelectedText({ text: selectedText, start, end })
-        setLlmPrompt(
-          `Please rewrite the following text to improve clarity and readability:\n\n"${selectedText}"`,
-        )
+
+        // Calculate button position
+        const textarea = editorRef.current
+        const rect = textarea.getBoundingClientRect()
+        
+        // Create a temporary element to measure text position
+        const tempDiv = document.createElement('div')
+        tempDiv.style.position = 'absolute'
+        tempDiv.style.visibility = 'hidden'
+        tempDiv.style.height = 'auto'
+        tempDiv.style.width = `${rect.width - 48}px` // Account for padding
+        tempDiv.style.fontSize = window.getComputedStyle(textarea).fontSize
+        tempDiv.style.fontFamily = window.getComputedStyle(textarea).fontFamily
+        tempDiv.style.lineHeight = window.getComputedStyle(textarea).lineHeight
+        tempDiv.style.whiteSpace = 'pre-wrap'
+        tempDiv.textContent = content.substring(0, start)
+        
+        document.body.appendChild(tempDiv)
+        const tempHeight = tempDiv.offsetHeight
+        document.body.removeChild(tempDiv)
+
+        const buttonX = rect.right - 40
+        const buttonY = rect.top + tempHeight + 24 - textarea.scrollTop
+
+        setFloatingButton({
+          visible: true,
+          x: buttonX,
+          y: buttonY
+        })
+
         if (!rightSidebarVisible) {
           setRightSidebarVisible(true)
         }
       } else {
         setSelectedText(null)
-        setLlmPrompt("")
+        setFloatingButton({ visible: false, x: 0, y: 0 })
       }
     }
   }, [content, rightSidebarVisible])
+
+  const addSelectedTextToPrompt = useCallback(() => {
+    console.log('addSelectedTextToPrompt called')
+    console.log('selectedText state:', selectedText)
+    console.log('current llmPrompt:', llmPrompt)
+    console.log('current highlightedRanges:', highlightedRanges)
+    
+    if (selectedText) {
+      try {
+        console.log('Adding selected text to prompt:', selectedText)
+        const newText = `"${selectedText.text}"\n\n`
+        console.log('New text to add:', newText)
+        setLlmPrompt(prev => prev + newText)
+        setFloatingButton({ visible: false, x: 0, y: 0 })
+        setHighlightedRanges(prev => [...prev, selectedText])
+        console.log('Updated highlighted ranges:', [...highlightedRanges, selectedText])
+        setSelectedText(null)
+        
+        // Clear selection in textarea
+        if (editorRef.current) {
+          editorRef.current.setSelectionRange(editorRef.current.selectionEnd, editorRef.current.selectionEnd)
+        }
+        console.log('addSelectedTextToPrompt completed successfully')
+      } catch (error) {
+        console.error('Error in addSelectedTextToPrompt:', error)
+      }
+    } else {
+      console.log('No selectedText available')
+    }
+  }, [selectedText, highlightedRanges, llmPrompt])
+
+  // Hide floating button when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (floatingButton.visible && editorRef.current && !editorRef.current.contains(event.target as Node)) {
+        setFloatingButton({ visible: false, x: 0, y: 0 })
+        setSelectedText(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [floatingButton.visible])
 
   const handleLlmSubmit = async () => {
     if (!llmPrompt.trim()) return
@@ -169,6 +319,7 @@ export default function DeepWikiEditor({
         "I can help you improve your documentation. Please select some text in the editor to get started."
 
     setLlmResponse(mockResponse)
+    setChatHistory(prev => [...prev, { prompt: llmPrompt, response: mockResponse }])
     setIsProcessing(false)
   }
 
@@ -283,6 +434,40 @@ export default function DeepWikiEditor({
     }
   }
 
+  const highlightedContent = useMemo(() => {
+    console.log('Computing highlighted content with', highlightedRanges.length, 'ranges')
+    if (highlightedRanges.length === 0) return content
+
+    // Sort ranges to guarantee deterministic behaviour
+    const ranges = [...highlightedRanges].sort((a, b) => a.start - b.start)
+    console.log('Sorted ranges:', ranges)
+
+    let result = ""
+    let cursor = 0
+
+    ranges.forEach(({ start, end }) => {
+      // Guard against stale indexes that might be outside the current bounds after edits
+      if (start >= content.length) return
+      const safeEnd = Math.min(end, content.length)
+
+      // Append untouched text
+      result += content.slice(cursor, start)
+
+      // Append highlighted part with a clearer background. Using Tailwind classes ensures
+      // the highlight is very noticeable both in light and dark themes.
+      result += `<mark class="bg-yellow-200 dark:bg-yellow-600/40 rounded-sm">${content.slice(start, safeEnd)}</mark>`
+
+      // Move the cursor forward
+      cursor = safeEnd
+    })
+
+    // Append the remainder of the document
+    result += content.slice(cursor)
+
+    console.log('Final highlighted content:', result)
+    return result
+  }, [content, highlightedRanges])
+
   return (
     <div className="h-screen flex flex-col bg-[var(--background)]">
       {/* Header - Fixed */}
@@ -308,7 +493,27 @@ export default function DeepWikiEditor({
       </header>
 
       {/* Main Content Area - Flex container */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Floating Quote Button */}
+        {floatingButton.visible && (
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              console.log('Floating quote button clicked')
+              addSelectedTextToPrompt()
+            }}
+            className="fixed z-[9999] w-8 h-8 bg-[var(--accent-primary)] hover:bg-[var(--highlight)] text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 cursor-pointer"
+            style={{
+              left: `${floatingButton.x}px`,
+              top: `${floatingButton.y}px`,
+              pointerEvents: 'auto'
+            }}
+          >
+            <Quote className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Left Sidebar - Fixed */}
         {leftSidebarVisible && (
           <div className="w-64 flex-none bg-[var(--background)] flex flex-col border-r border-[var(--border-color)]">
@@ -349,65 +554,38 @@ export default function DeepWikiEditor({
           </div>
         )}
 
-        {/* Main Editor and AI Assistant */}
+        {/* Main Editor */}
         <div className="flex-1 flex bg-[var(--background)]">
-          {/* Unified Header */}
+          {/* Editor Header */}
           <div className="flex-1 flex flex-col">
-            <div className="flex-none flex border-b border-[var(--border-color)]">
-              {/* Editor Header */}
-              <div className="flex-1 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-xl font-semibold text-[var(--foreground)]">{pageId || "Wiki Page"}</h1>
-                    <div className="flex items-center text-sm text-[var(--muted-foreground)]">
-                      <ChevronRight className="w-4 h-4 mr-1" />
-                      Editing Markdown
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {!leftSidebarVisible && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setLeftSidebarVisible(true)}
-                        className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      >
-                        <PanelLeft className="w-4 h-4" />
-                      </Button>
-                    )}
-                    {!rightSidebarVisible && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRightSidebarVisible(true)}
-                        className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      >
-                        <PanelRight className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
+            <div className="flex-none px-6 py-4 border-b border-[var(--border-color)]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{pageId || "Wiki Page"}</h1>
                 </div>
-              </div>
-
-              {/* AI Assistant Header */}
-              {rightSidebarVisible && (
-                <div className="w-96 px-6 py-4 border-l border-[var(--border-color)]">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Bot className="w-5 h-5 text-[var(--accent)] mr-2" />
-                      <h3 className="text-lg font-semibold text-[var(--foreground)]">AI Assistant</h3>
-                    </div>
+                <div className="flex items-center space-x-2">
+                  {!leftSidebarVisible && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setRightSidebarVisible(false)}
-                      className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-1"
+                      onClick={() => setLeftSidebarVisible(true)}
+                      className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    >
+                      <PanelLeft className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {!rightSidebarVisible && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRightSidebarVisible(true)}
+                      className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                     >
                       <PanelRight className="w-4 h-4" />
                     </Button>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Content Area */}
@@ -422,7 +600,7 @@ export default function DeepWikiEditor({
                       value={content}
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value)}
                       onSelect={handleTextSelection}
-                      className="min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono"
+                      className="min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm"
                       placeholder="Start editing your documentation..."
                     />
                   </ScrollArea>
@@ -432,68 +610,72 @@ export default function DeepWikiEditor({
                 <div className="w-1/2 h-full border-l border-[var(--border-color)] bg-[var(--background)]">
                   <ScrollArea className="h-full">
                     <div className="p-6">
-                      <Markdown content={content} />
+                      <Markdown content={highlightedContent} />
                     </div>
                   </ScrollArea>
                 </div>
               </div>
 
-              {/* AI Assistant Content */}
+              {/* AI Assistant Sidebar */}
               {rightSidebarVisible && (
                 <div className="w-96 flex-none border-l border-[var(--border-color)] flex flex-col bg-[var(--background)]">
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className="p-6 flex flex-col h-full">
-                      {selectedText && (
-                        <div className="mb-4 p-3 bg-[var(--accent)]/10 rounded-lg border border-[var(--accent)]/20">
-                          <p className="text-sm text-[var(--accent)] font-medium mb-1">Selected Text:</p>
-                          <p className="text-sm text-[var(--foreground)] italic">"{selectedText.text}"</p>
-                        </div>
-                      )}
+                  <div className="flex flex-col h-full">
+                    {/* AI Panel Header */}
+                    <div className="flex-none px-4 py-2 border-b border-[var(--border-color)] flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Bot className="w-4 h-4 text-[var(--accent)] mr-2" />
+                        <h3 className="text-sm font-medium text-[var(--foreground)]">AI Assistant</h3>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setRightSidebarVisible(false)}
+                        className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-1"
+                      >
+                        <PanelRight className="w-4 h-4" />
+                      </Button>
+                    </div>
 
-                      <div className="flex flex-col h-full">
-                        <div className="flex-none">
-                          <label className="text-sm font-medium text-[var(--foreground)] mb-2">Prompt for AI Assistant</label>
-                          <Textarea
-                            value={llmPrompt}
-                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setLlmPrompt(e.target.value)}
-                            placeholder="Select text in the editor or type your own prompt..."
-                            className="mb-4 h-32 border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)]"
-                          />
-
-                          <Button
-                            onClick={handleLlmSubmit}
-                            disabled={!llmPrompt.trim() || isProcessing}
-                            className="mb-4 w-full btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isProcessing ? (
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Bot className="w-4 h-4" />
-                            )}
-                            {isProcessing ? "Processing..." : "Send to AI"}
-                          </Button>
-                        </div>
-
-                        {llmResponse && (
-                          <div className="flex-1 flex flex-col min-h-0">
-                            <label className="text-sm font-medium text-[var(--foreground)] mb-2">AI Response</label>
-                            <div className="flex-1 p-3 bg-[var(--accent)]/5 rounded-lg border border-[var(--border-color)] mb-4 overflow-auto">
-                              <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{llmResponse}</p>
+                    {/* Chat History */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      {chatHistory.map((chat, index) => (
+                        <div key={index} className="space-y-3">
+                          <div className="flex items-start gap-3">
+                            <div className="w-6 h-6 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-none">
+                              <User className="w-4 h-4 text-[var(--accent)]" />
                             </div>
-
-                            {selectedText && (
-                              <div className="flex-none">
-                                <Button
-                                  onClick={applyLlmSuggestion}
-                                  variant="outline"
-                                  className="w-full border-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:border-[var(--accent)]/30"
-                                >
-                                  Apply Suggestion
-                                </Button>
-                              </div>
-                            )}
+                            <div className="flex-1 text-sm text-[var(--foreground)]">{chat.prompt}</div>
                           </div>
-                        )}
+                          <div className="flex items-start gap-3">
+                            <div className="w-6 h-6 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-none">
+                              <Bot className="w-4 h-4 text-[var(--accent)]" />
+                            </div>
+                            <div className="flex-1 text-sm text-[var(--foreground)] whitespace-pre-wrap">{chat.response}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="flex-none p-6 border-t border-[var(--border-color)]">
+                      <div className="flex gap-3">
+                        <Textarea
+                          value={llmPrompt}
+                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setLlmPrompt(e.target.value)}
+                          placeholder="Ask the AI assistant..."
+                          className="flex-1 min-h-[40px] max-h-32 border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm"
+                        />
+                        <Button
+                          onClick={handleLlmSubmit}
+                          disabled={!llmPrompt.trim() || isProcessing}
+                          className="btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isProcessing ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Send className="w-4 h-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </div>

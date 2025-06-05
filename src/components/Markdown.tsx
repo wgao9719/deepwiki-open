@@ -111,6 +111,16 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
     td({ children, ...props }: { children?: React.ReactNode }) {
       return <td className="px-4 py-3 border-t border-gray-200 dark:border-gray-700" {...props}>{children}</td>;
     },
+    mark({ children, ...props }: { children?: React.ReactNode }) {
+      return (
+        <mark 
+          className="bg-gray-200 dark:bg-gray-700/40 rounded-sm" 
+          {...props}
+        >
+          {children}
+        </mark>
+      );
+    },
     code(props: {
       inline?: boolean;
       className?: string;
