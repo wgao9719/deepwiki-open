@@ -5,7 +5,7 @@ const SERVER_BASE_URL = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://local
 
 export async function GET(request: Request) {
   // Add basic logging to see if route is hit
-  console.log('🔥 AUTH CALLBACK ROUTE HIT!', new Date().toISOString())
+  console.log('🔥 AUTH CALLBACK ROUTE HIT!!!!!!:00000', new Date().toISOString())
   
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')

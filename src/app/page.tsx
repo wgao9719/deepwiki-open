@@ -10,7 +10,6 @@ import Mermaid from '../components/Mermaid';
 import ConfigurationModal from '@/components/ConfigurationModal';
 import ProcessedProjects from '@/components/ProcessedProjects';
 import GitHubReposSidebar from '@/components/GitHubReposSidebar';
-import GitHubCollaboratorReposSidebar from '@/components/GitHubCollaboratorReposSidebar';
 import { extractUrlPath } from '@/utils/urlDecoder';
 import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 
@@ -456,9 +455,8 @@ export default function Home() {
         </main>
 
         {/* Sidebar */}
-        <aside className="flex-shrink-0 flex flex-col gap-4">
+        <aside className="flex-shrink-0">
           <GitHubReposSidebar />
-          <GitHubCollaboratorReposSidebar />
         </aside>
       </div>
 
