@@ -11,6 +11,7 @@ import Ask from '@/components/Ask';
 import ModelSelectionModal from '@/components/ModelSelectionModal';
 import WikiTreeView from '@/components/WikiTreeView';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { RepoInfo } from '@/types/repoinfo';
 import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
 import getRepoUrl from '@/utils/getRepoUrl';
@@ -169,6 +170,7 @@ export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
 
   // Extract owner and repo from route params
   const owner = params.owner as string;
@@ -215,6 +217,13 @@ export default function RepoWikiPage() {
   const [currentToken, setCurrentToken] = useState(token); // Track current effective token
   const [effectiveRepoInfo, setEffectiveRepoInfo] = useState(repoInfo); // Track effective repo info with cached data
 
+  // Repository permission state - to determine if this is an "other repository"
+  const [repositoryPermissions, setRepositoryPermissions] = useState<{
+    isOwner: boolean;
+    isCollaborator: boolean;
+    relationship?: string;
+  } | null>(null);
+
   // Model selection state variables
   const [selectedProviderState, setSelectedProviderState] = useState(providerParam);
   const [selectedModelState, setSelectedModelState] = useState(modelParam);
@@ -255,6 +264,63 @@ export default function RepoWikiPage() {
       wikiContent.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [currentPageId]);
+
+  // Check repository permissions to determine if this is an "other repository"
+  useEffect(() => {
+    const checkRepositoryPermissions = async () => {
+      if (!user?.id || !owner || !repo) {
+        setRepositoryPermissions(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/user/profile/${user.id}`);
+        if (!response.ok) {
+          setRepositoryPermissions(null);
+          return;
+        }
+
+        const data = await response.json();
+        const profile = data.profile;
+        
+        if (!profile) {
+          setRepositoryPermissions(null);
+          return;
+        }
+
+        // Combine all repositories
+        const allRepos = [
+          ...(profile.github_repos || []),
+          ...(profile.github_collaborator_repos || []),
+          ...(profile.github_other_repos || [])
+        ];
+
+        // Find the current repository
+        const currentRepoFullName = `${owner}/${repo}`;
+        const currentRepo = allRepos.find(r => r.full_name === currentRepoFullName);
+
+        if (currentRepo) {
+          setRepositoryPermissions({
+            isOwner: currentRepo.is_owner || false,
+            isCollaborator: currentRepo.is_collaborator || false,
+            relationship: currentRepo.relationship
+          });
+        } else {
+          // Repository not found in user's repos - treat as "other repository"
+          setRepositoryPermissions({
+            isOwner: false,
+            isCollaborator: false,
+            relationship: 'unknown'
+          });
+        }
+      } catch (error) {
+        console.error('Error checking repository permissions:', error);
+        setRepositoryPermissions(null);
+      }
+    };
+
+    checkRepositoryPermissions();
+  }, [user?.id, owner, repo]);
 
   // Generate content for a wiki page
   const generatePageContent = useCallback(async (page: WikiPage, owner: string, repo: string) => {
@@ -1902,17 +1968,37 @@ IMPORTANT:
                     <h3 className="text-xl font-bold text-[var(--foreground)] break-words font-serif">
                       {generatedPages[currentPageId].title}
                     </h3>
-                    <Link
-                      href={`/${effectiveRepoInfo.owner}/${effectiveRepoInfo.repo}/edit/${currentPageId}`}
-                      onClick={() => {
-                        if (generatedPages[currentPageId]) {
-                          sessionStorage.setItem('editPageContent', generatedPages[currentPageId].content)
-                        }
-                      }}
-                      className="text-xs text-[var(--accent-primary)] hover:underline"
-                    >
-                      Edit Page
-                    </Link>
+                    {/* Check if this is an "other repository" (starred, no ownership/collaboration rights) */}
+                    {(() => {
+                      // Determine if this is an "other repository" based on actual permissions
+                      // "Other repositories" are typically starred repos where the user has no ownership or collaboration rights
+                      const isOtherRepository = repositoryPermissions && 
+                        !repositoryPermissions.isOwner && 
+                        !repositoryPermissions.isCollaborator && 
+                        (repositoryPermissions.relationship === 'starred' || repositoryPermissions.relationship === 'unknown');
+                      
+                      if (isOtherRepository) {
+                        return (
+                          <span className="text-sm text-[var(--muted)] bg-[var(--background)] px-3 py-1.5 rounded-md border border-[var(--border-color)]">
+                            Contact for Editing Permissions
+                          </span>
+                        );
+                      }
+                      
+                      return (
+                        <Link
+                          href={`/${effectiveRepoInfo.owner}/${effectiveRepoInfo.repo}/edit/${currentPageId}`}
+                          onClick={() => {
+                            if (generatedPages[currentPageId]) {
+                              sessionStorage.setItem('editPageContent', generatedPages[currentPageId].content)
+                            }
+                          }}
+                          className="text-sm text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 px-3 py-1.5 rounded-md border border-[var(--accent-primary)]/30"
+                        >
+                          Edit Page
+                        </Link>
+                      );
+                    })()}
                   </div>
 
                   <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">

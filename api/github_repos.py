@@ -40,8 +40,7 @@ class GitHubReposFetcher:
             raise ValueError("Supabase connection not available. Please configure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
     
     async def fetch_user_repositories(self, github_username: str, github_token: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
-
-      """
+        """
         Fetch repositories for a given GitHub username
         
         Args:
@@ -50,7 +49,6 @@ class GitHubReposFetcher:
             
         Returns:
             Tuple of (owned_repos, collaborator_repos, other_repos) lists
-
         """
         timestamp = datetime.now().isoformat()
         logger.info(f"🚀 [{timestamp}] Starting GitHub API fetch for user: {github_username}")
