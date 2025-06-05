@@ -5,6 +5,8 @@ import os
 import json
 import logging
 import asyncio
+import ssl
+import certifi
 from typing import Optional, List, Dict, Any, Tuple
 import aiohttp
 from datetime import datetime, timedelta
@@ -19,6 +21,16 @@ logger = logging.getLogger(__name__)
 # Supabase configuration
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # Need service role key for server operations
+
+# SSL context configuration for macOS certificate issues
+def create_ssl_context():
+    """Create SSL context with proper certificate handling for macOS"""
+    context = ssl.create_default_context(cafile=certifi.where())
+    return context
+
+def create_connector():
+    """Create aiohttp connector with SSL context"""
+    return aiohttp.TCPConnector(ssl=create_ssl_context())
 
 class GitHubReposFetcher:
     """Handles fetching GitHub repositories for users"""
@@ -45,14 +57,25 @@ class GitHubReposFetcher:
         
         Args:
             github_username: GitHub username to fetch repositories for
-            github_token: Optional GitHub token for higher rate limits
+            github_token: Optional GitHub token for higher rate limits (fallback to GITHUB_TOKEN env var)
             
         Returns:
             Tuple of (owned_repos, collaborator_repos, other_repos) lists
         """
         timestamp = datetime.now().isoformat()
         logger.info(f"🚀 [{timestamp}] Starting GitHub API fetch for user: {github_username}")
+        
+        # Always try to use authentication for higher rate limits (5000/hour vs 60/hour)
+        if not github_token:
+            github_token = os.getenv('GITHUB_TOKEN')
+            if github_token:
+                logger.info(f"🔑 [{timestamp}] Using fallback GITHUB_TOKEN from environment")
+            else:
+                logger.warning(f"⚠️ [{timestamp}] No GitHub token provided - using unauthenticated requests (60/hour limit)")
+                logger.warning(f"⚠️ [{timestamp}] Consider setting GITHUB_TOKEN environment variable for 5000/hour limit")
+        
         logger.info(f"🔑 [{timestamp}] GitHub token: {'PROVIDED' if github_token else 'NOT_PROVIDED'}")
+        logger.info(f"📊 [{timestamp}] Rate limit: {'5000/hour (authenticated)' if github_token else '60/hour (unauthenticated)'}")
         
         owned_repositories = []
         collaborator_repositories = []
@@ -66,21 +89,20 @@ class GitHubReposFetcher:
             
             if github_token:
                 headers['Authorization'] = f'token {github_token}'
-                logger.info(f"🔐 [{timestamp}] Added authorization header with provided token")
+                logger.info(f"🔐 [{timestamp}] Added authorization header for 5000/hour rate limit")
             else:
-                logger.info(f"🔓 [{timestamp}] Making unauthenticated requests (rate limited)")
+                logger.info(f"🔓 [{timestamp}] Making unauthenticated requests (60/hour rate limit)")
             
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(connector=create_connector()) as session:
                 logger.info(f"📡 [{timestamp}] Starting to fetch owned repositories...")
                 await self._fetch_owned_repos(session, github_username, headers, owned_repositories)
                 logger.info(f"📊 [{timestamp}] Owned repos fetched: {len(owned_repositories)} repositories")
                 
                 logger.info(f"📡 [{timestamp}] Starting to fetch contributed repositories...")
-
                 await self._fetch_contributed_repos(session, github_username, headers, collaborator_repositories)
                 logger.info(f"📊 [{timestamp}] After contributions: {len(collaborator_repositories)} contributed repositories")
                 
-                # Fetch collaborator and organization member repositories
+                # Fetch collaborator and organization member repositories (always try if we have a token)
                 if github_token:  # These endpoints require authentication
                     logger.info(f"📡 [{timestamp}] Starting to fetch collaborator repositories...")
                     await self._fetch_collaborator_repos(session, github_username, headers, collaborator_repositories)
@@ -94,13 +116,13 @@ class GitHubReposFetcher:
                     await self._fetch_other_repos(session, github_username, headers, other_repositories)
                     logger.info(f"📊 [{timestamp}] Other repos fetched: {len(other_repositories)} repositories")
                 else:
-                    logger.info(f"⚠️ [{timestamp}] Skipping collaborator/org/other repos - authentication required")
+                    logger.warning(f"⚠️ [{timestamp}] Skipping collaborator/org/other repos - authentication required")
+                    logger.warning(f"⚠️ [{timestamp}] Provide GitHub token to access full repository list and higher rate limits")
             
             # Deduplicate and sort
             logger.info(f"🔄 [{timestamp}] Deduplicating repositories...")
             owned_repositories = self._deduplicate_repos(owned_repositories)
             collaborator_repositories = self._deduplicate_repos(collaborator_repositories)
-
             other_repositories = self._deduplicate_repos(other_repositories)
             
             logger.info(f"✅ [{timestamp}] Final result: {len(owned_repositories)} owned repos, {len(collaborator_repositories)} collaborator repos for {github_username}")
@@ -110,7 +132,6 @@ class GitHubReposFetcher:
         except Exception as e:
             logger.error(f"💥 [{timestamp}] Error fetching repositories for {github_username}: {str(e)}")
             logger.error(f"🔍 [{timestamp}] Exception type: {type(e).__name__}")
-
             return [], [], []
     
     async def _fetch_owned_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
