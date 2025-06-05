@@ -118,7 +118,9 @@ export default function WorkshopPage() {
         repo_type: repoInfo.type,
         language: language,
       });
-      const response = await fetch(`/api/wiki_cache?${params.toString()}`);
+      const response = await fetch(`/api/wiki_cache?${params.toString()}`, {
+        cache: 'no-store',
+      });
 
       if (response.ok) {
         const cachedData = await response.json();

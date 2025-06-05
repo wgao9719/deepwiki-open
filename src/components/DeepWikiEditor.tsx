@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save, ChevronRight, Sparkles, Send, RefreshCw, PanelLeft, PanelRight,
-  Bot, ChevronDown, ChevronUp, User, Quote,
+  Bot, ChevronDown, ChevronUp, User, Quote, Check, X,
 } from "lucide-react"
 import Markdown from "./Markdown"
 import WikiTreeView from "./WikiTreeView"
@@ -20,6 +20,7 @@ interface Selection {
   text: string
   start: number
   end: number
+  sourceText?: string
 }
 
 interface FloatingButton {
@@ -90,12 +91,23 @@ export default function DeepWikiEditor({
   const [wikiStructure, setWikiStructure] = useState<WikiStructure | null>(null)
   const [isStructureLoading, setIsStructureLoading] = useState(false)
   const [cachedStructures, setCachedStructures] = useState<Record<string, WikiStructure>>({})
+  const [currentPageId, setCurrentPageId] = useState(pageId || "")
   const [highlightedRanges, setHighlightedRanges] = useState<Selection[]>([])
+  const [proposedContent, setProposedContent] = useState<string | null>(null)
+  const [originalContentForRevert, setOriginalContentForRevert] = useState<string | null>(null)
+  const [wikiMatches, setWikiMatches] = useState<Selection[]>([])
 
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
+
+  // Sync currentPageId with pageId prop when it changes
+  useEffect(() => {
+    if (pageId && pageId !== currentPageId) {
+      setCurrentPageId(pageId)
+    }
+  }, [pageId, currentPageId])
 
   // Fetch wiki structure for sidebar
   useEffect(() => {
@@ -151,7 +163,7 @@ export default function DeepWikiEditor({
   }, [initialContent])
 
   const handlePageSelect = async (targetPageId: string) => {
-    if (!owner || !repo || targetPageId === pageId) return
+    if (!owner || !repo || targetPageId === currentPageId) return
 
     try {
       // Fetch the new page content
@@ -170,16 +182,14 @@ export default function DeepWikiEditor({
       const data = await res.json()
       const newPageContent = data?.generated_pages?.[targetPageId]?.content || ""
 
-      // Update the URL without a full page reload
-      const newParams = new URLSearchParams(searchParams?.toString())
-      newParams.set('page', targetPageId)
-      window.history.pushState({}, '', `/${owner}/${repo}/edit/${targetPageId}?${newParams.toString()}`)
-
-      // Update the content and pageId
-      setContent(newPageContent)
-      setSelectedText(null)
-      setLlmPrompt("")
-      setLlmResponse("")
+      // Store the content in sessionStorage for the target page
+      sessionStorage.setItem(`editPageContent_${targetPageId}`, newPageContent)
+      
+      // Navigate to the new page using Next.js router
+      const queryParams = new URLSearchParams(searchParams?.toString())
+      const queryString = queryParams.toString()
+      const newUrl = `/${owner}/${repo}/edit/${targetPageId}${queryString ? `?${queryString}` : ''}`
+      router.push(newUrl)
 
       // Update wiki structure if it's not already cached
       const cacheKey = `${owner}/${repo}`
@@ -195,20 +205,6 @@ export default function DeepWikiEditor({
     }
   }
 
-  // Add event listener for browser back/forward buttons
-  useEffect(() => {
-    const handlePopState = async () => {
-      const pathParts = window.location.pathname.split('/')
-      const newPageId = pathParts[pathParts.length - 1]
-      if (newPageId && newPageId !== pageId) {
-        await handlePageSelect(newPageId)
-      }
-    }
-
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [pageId])
-
   const handleTextSelection = useCallback(() => {
     console.log('handleTextSelection called')
     if (editorRef.current) {
@@ -218,8 +214,20 @@ export default function DeepWikiEditor({
 
       if (start !== end) {
         const selectedText = content.substring(start, end)
-        console.log('Selected text:', selectedText)
-        setSelectedText({ text: selectedText, start, end })
+        
+        // Check if selected text exactly matches any part of the wiki content
+        const isExactMatch = content.includes(selectedText)
+        
+        if (isExactMatch) {
+          setSelectedText({ 
+            text: selectedText, 
+            start, 
+            end,
+            sourceText: selectedText // Track that this is from the wiki
+          })
+        } else {
+          setSelectedText({ text: selectedText, start, end })
+        }
 
         // Calculate button position
         const textarea = editorRef.current
@@ -260,6 +268,43 @@ export default function DeepWikiEditor({
     }
   }, [content, rightSidebarVisible])
 
+  // Helper function to merge overlapping ranges and prevent duplicates
+  const mergeHighlightRanges = useCallback((ranges: Selection[], newRange: Selection): Selection[] => {
+    // Check if the exact same range already exists
+    const exactMatch = ranges.find(range => 
+      range.start === newRange.start && range.end === newRange.end
+    )
+    if (exactMatch) {
+      console.log('Exact range already exists, skipping:', newRange)
+      return ranges
+    }
+
+    // Add the new range and sort by start position
+    const allRanges = [...ranges, newRange].sort((a, b) => a.start - b.start)
+    const merged: Selection[] = []
+
+    for (const current of allRanges) {
+      if (merged.length === 0) {
+        merged.push(current)
+        continue
+      }
+
+      const last = merged[merged.length - 1]
+      
+      // Check if current range overlaps with the last merged range
+      if (current.start <= last.end) {
+        // Merge overlapping ranges
+        last.end = Math.max(last.end, current.end)
+        last.text = content.substring(last.start, last.end)
+      } else {
+        // No overlap, add as new range
+        merged.push(current)
+      }
+    }
+
+    return merged
+  }, [content])
+
   const addSelectedTextToPrompt = useCallback(() => {
     console.log('addSelectedTextToPrompt called')
     console.log('selectedText state:', selectedText)
@@ -269,17 +314,23 @@ export default function DeepWikiEditor({
     if (selectedText) {
       try {
         console.log('Adding selected text to prompt:', selectedText)
-        const newText = `"${selectedText.text}"\n\n`
-        console.log('New text to add:', newText)
-        setLlmPrompt(prev => prev + newText)
+        // Note: No longer automatically adding to prompt, just highlighting for regeneration
         setFloatingButton({ visible: false, x: 0, y: 0 })
-        setHighlightedRanges(prev => [...prev, selectedText])
-        console.log('Updated highlighted ranges:', [...highlightedRanges, selectedText])
+        
+        // If this is a wiki match, add it to wikiMatches
+        if (selectedText.sourceText) {
+          setWikiMatches(prev => mergeHighlightRanges(prev, selectedText))
+        }
+        
+        // Add to general highlighted ranges as before
+        setHighlightedRanges(prev => mergeHighlightRanges(prev, selectedText))
         setSelectedText(null)
         
-        // Clear selection in textarea
         if (editorRef.current) {
-          editorRef.current.setSelectionRange(editorRef.current.selectionEnd, editorRef.current.selectionEnd)
+          editorRef.current.setSelectionRange(
+            editorRef.current.selectionEnd,
+            editorRef.current.selectionEnd
+          )
         }
         console.log('addSelectedTextToPrompt completed successfully')
       } catch (error) {
@@ -288,7 +339,7 @@ export default function DeepWikiEditor({
     } else {
       console.log('No selectedText available')
     }
-  }, [selectedText, highlightedRanges, llmPrompt])
+  }, [selectedText, highlightedRanges, llmPrompt, mergeHighlightRanges])
 
   // Hide floating button when clicking outside
   useEffect(() => {
@@ -304,22 +355,33 @@ export default function DeepWikiEditor({
   }, [floatingButton.visible])
 
   const handleLlmSubmit = async () => {
-    if (!llmPrompt.trim()) return
+    if (!llmPrompt.trim() && wikiMatches.length === 0 && highlightedRanges.length === 0) return
 
     setIsProcessing(true)
     setLlmResponse("")
 
     try {
-      // Build repo URL if possible
       const repoUrl = owner && repo ? `https://github.com/${owner}/${repo}` : "";
 
-      const requestBody = {
+      // Build the highlighted content string (if any)
+      const highlightedContent = highlightedRanges.length > 0
+        ? highlightedRanges
+            .map(range => content.substring(range.start, range.end))
+            .join("\n\n-----\n\n") // delimiter between disjoint selections
+        : undefined
+
+      const requestBody: Record<string, any> = {
         repo_url: repoUrl,
-        current_page_title: pageId || "Current Page",
+        current_page_title: currentPageId || "Current Page",
         current_page_content: content,
         current_page_files: [],
         edit_request: llmPrompt,
-      };
+      }
+
+      // Only include highlighted_content when we actually have one – keeps the payload clean
+      if (highlightedContent && highlightedContent.trim().length > 0) {
+        requestBody.highlighted_content = highlightedContent
+      }
 
       const response = await fetch("/api/wiki/edit/suggestions", {
         method: "POST",
@@ -344,13 +406,75 @@ export default function DeepWikiEditor({
         setLlmResponse(completedText);
       }
 
-      setChatHistory(prev => [...prev, { prompt: llmPrompt, response: completedText }]);
+      // Split response into suggestions and revised document
+      const splitToken = "### Revised Document";
+      const parts = completedText.split(splitToken);
+      let suggestionsPart = completedText;
+      let revisedPart = "";
+      if (parts.length >= 2) {
+        suggestionsPart = parts[0].trim();
+        revisedPart = parts.slice(1).join(splitToken).trim();
+        if (revisedPart.startsWith("###")) {
+          revisedPart = revisedPart.replace(/^#+\s*/m, "");
+        }
 
+        // Preserve a snapshot of the content **before** applying any change so that
+        // the user can still revert      
+        const preEditContent = content;
+
+        let nextContent = revisedPart;
+
+        // If we originally sent `highlighted_content` then the LLM response may
+        // contain **only** the edited selection(s) (some models ignore the
+        // instruction to return the full document). When that happens we need to
+        // stitch the edited chunks back into the original document ourselves so
+        // that non-selected parts are preserved.
+        if (highlightedContent && highlightedRanges.length > 0) {
+          // Build an array of replacement chunks, keeping the same delimiter that
+          // we sent to the backend so that multiple disjoint selections are handled.
+          const replacements = highlightedRanges.length > 1
+            ? revisedPart.split("\n\n-----\n\n")
+            : [revisedPart];
+
+          if (replacements.length === highlightedRanges.length) {
+            // Start with the original page content and progressively splice in
+            // each replacement while accounting for changes in string length.
+            let assembled = preEditContent;
+            let offset = 0;
+
+            highlightedRanges.forEach((range, idx) => {
+              const start = range.start + offset;
+              const end = range.end + offset;
+              const replacement = replacements[idx];
+              assembled = assembled.slice(0, start) + replacement + assembled.slice(end);
+              // Update offset so subsequent ranges stay accurate
+              offset += replacement.length - (end - start);
+            });
+
+            nextContent = assembled;
+          }
+        }
+
+        setProposedContent(nextContent);
+        setOriginalContentForRevert(preEditContent);
+        setContent(nextContent);
+
+        // Reset highlighted ranges after a successful round-trip so they don't
+        // leak into the next edit session
+        if (highlightedRanges.length > 0) {
+          setHighlightedRanges([])
+        }
+
+        setChatHistory(prev => [...prev, { prompt: llmPrompt, response: suggestionsPart }]);
+        setLlmResponse(suggestionsPart);
+
+        // Clear wiki matches after successful submission
+        setWikiMatches([])
+      }
     } catch (error) {
-      console.error("LLM request error", error);
-      setLlmResponse("Error generating suggestions. Please try again.");
+      console.error("Error submitting to LLM:", error)
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false)
     }
   }
 
@@ -399,7 +523,7 @@ export default function DeepWikiEditor({
       console.log('Retrieved cache data:', {
         hasGeneratedPages: !!cachedData?.generated_pages,
         pageCount: Object.keys(cachedData?.generated_pages || {}).length,
-        targetPageExists: !!cachedData?.generated_pages?.[pageId || '']
+        targetPageExists: !!cachedData?.generated_pages?.[currentPageId || '']
       })
 
       if (!cachedData?.generated_pages || !cachedData?.wiki_structure) {
@@ -408,18 +532,18 @@ export default function DeepWikiEditor({
 
       // Update the specific page content
       const updatedPage = {
-        ...cachedData.generated_pages[pageId || ''],
+        ...cachedData.generated_pages[currentPageId || ''],
         content: content,
         updated_at: new Date().toISOString()
       }
       
       console.log('Updating page content:', {
-        pageId,
+        pageId: currentPageId,
         contentLength: content.length,
-        hasExistingPage: !!cachedData.generated_pages[pageId || '']
+        hasExistingPage: !!cachedData.generated_pages[currentPageId || '']
       })
 
-      cachedData.generated_pages[pageId || ''] = updatedPage
+      cachedData.generated_pages[currentPageId || ''] = updatedPage
 
       // Save back to Supabase
       console.log('Saving updated cache to Supabase...')
@@ -453,8 +577,8 @@ export default function DeepWikiEditor({
       console.log('Save response:', saveResult)
 
       // Also update sessionStorage for immediate viewing (page specific)
-      if (pageId) {
-        sessionStorage.setItem(`editPageContent_${pageId}`, content)
+      if (currentPageId) {
+        sessionStorage.setItem(`editPageContent_${currentPageId}`, content)
       }
       
       // Show success message
@@ -465,12 +589,60 @@ export default function DeepWikiEditor({
     }
   }
 
+  const handleAccept = async () => {
+    if (!proposedContent) return;
+    setProposedContent(null);
+    setOriginalContentForRevert(null);
+    setLlmResponse("");
+    await handleSave();
+  };
+
+  const handleReject = () => {
+    if (originalContentForRevert) {
+      setContent(originalContentForRevert);
+    }
+    setProposedContent(null);
+    setOriginalContentForRevert(null);
+    setLlmResponse("");
+  };
+
+  // Helper function to filter out stale ranges
+  const cleanStaleRanges = useCallback((ranges: Selection[]): Selection[] => {
+    return ranges.filter(range => {
+      // Remove ranges that are completely outside the current content
+      if (range.start >= content.length || range.end > content.length || range.start >= range.end) {
+        console.log('Removing stale range:', range)
+        return false
+      }
+      
+      // Optional: Check if the text still matches (in case content was edited extensively)
+      const currentText = content.substring(range.start, range.end)
+      if (currentText !== range.text) {
+        console.log('Text mismatch for range, removing:', { expected: range.text, actual: currentText })
+        return false
+      }
+      
+      return true
+    })
+  }, [content])
+
   const highlightedContent = useMemo(() => {
     console.log('Computing highlighted content with', highlightedRanges.length, 'ranges')
     if (highlightedRanges.length === 0) return content
 
+    // Clean up stale ranges first
+    const validRanges = cleanStaleRanges(highlightedRanges)
+    
+    // Update the state if we removed any stale ranges
+    if (validRanges.length !== highlightedRanges.length) {
+      console.log('Cleaned up stale ranges, updating state')
+      setHighlightedRanges(validRanges)
+    }
+
+    if (validRanges.length === 0) return content
+
     // Sort ranges to guarantee deterministic behaviour
-    const ranges = [...highlightedRanges].sort((a, b) => a.start - b.start)
+    const ranges = [...validRanges].sort((a, b) => a.start - b.start)
     console.log('Sorted ranges:', ranges)
 
     let result = ""
@@ -480,6 +652,9 @@ export default function DeepWikiEditor({
       // Guard against stale indexes that might be outside the current bounds after edits
       if (start >= content.length) return
       const safeEnd = Math.min(end, content.length)
+      
+      // Skip if start equals or exceeds safeEnd
+      if (start >= safeEnd) return
 
       // Append untouched text
       result += content.slice(cursor, start)
@@ -497,7 +672,7 @@ export default function DeepWikiEditor({
 
     console.log('Final highlighted content:', result)
     return result
-  }, [content, highlightedRanges])
+  }, [content, highlightedRanges, cleanStaleRanges])
 
   return (
     <div className="h-screen flex flex-col bg-[var(--background)]">
@@ -515,6 +690,24 @@ export default function DeepWikiEditor({
             <h1 className="text-xl font-semibold text-[var(--foreground)]">DeepWiki Editor</h1>
           </div>
           <div className="flex items-center space-x-2">
+            {proposedContent && (
+              <>
+                <button
+                  onClick={handleAccept}
+                  title="Accept changes"
+                  className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white flex items-center justify-center"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleReject}
+                  title="Reject changes"
+                  className="p-2 rounded-md bg-red-600 hover:bg-red-700 text-white flex items-center justify-center"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+            )}
             <button onClick={handleSave} className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
               <Save className="w-4 h-4" />
               Save
@@ -573,7 +766,7 @@ export default function DeepWikiEditor({
                 {wikiStructure && (
                   <WikiTreeView
                     wikiStructure={wikiStructure}
-                    currentPageId={pageId || ""}
+                    currentPageId={currentPageId}
                     onPageSelect={handlePageSelect}
                   />
                 )}
@@ -592,7 +785,7 @@ export default function DeepWikiEditor({
             <div className="flex-none px-6 py-4 border-b border-[var(--border-color)]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{pageId || "Wiki Page"}</h1>
+                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{currentPageId || "Wiki Page"}</h1>
                 </div>
                 <div className="flex items-center space-x-2">
                   {!leftSidebarVisible && (
@@ -689,10 +882,35 @@ export default function DeepWikiEditor({
 
                     {/* Input Area */}
                     <div className="flex-none p-6 border-t border-[var(--border-color)]">
+                      {/* Highlight controls */}
+                      {highlightedRanges.length > 0 && (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                          <div className="flex items-center justify-between">
+                                                         <span className="text-sm text-yellow-800 dark:text-yellow-200">
+                               {highlightedRanges.length} text section{highlightedRanges.length > 1 ? 's' : ''} being regenerated
+                             </span>
+                            <button
+                              onClick={() => setHighlightedRanges([])}
+                              className="text-xs text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 px-2 py-1 rounded border border-yellow-300 dark:border-yellow-600 hover:bg-yellow-100 dark:hover:bg-yellow-800 transition-colors"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-3">
                         <Textarea
                           value={llmPrompt}
                           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setLlmPrompt(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (llmPrompt.trim() && !isProcessing) {
+                                handleLlmSubmit();
+                                setLlmPrompt(''); // Clear the input after sending
+                              }
+                            }
+                          }}
                           placeholder="Ask the AI assistant..."
                           className="flex-1 min-h-[40px] max-h-32 border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm"
                         />
