@@ -29,6 +29,22 @@ interface FloatingButton {
   y: number
 }
 
+// Add new interfaces for memory functionality
+interface EditMemory {
+  id: string
+  timestamp: number
+  prompt: string
+  response: string
+  pageId: string
+  contentSnapshot?: string
+}
+
+interface UserPreferences {
+  writingStyle?: string
+  preferredFormats?: string[]
+  commonInstructions?: string[]
+}
+
 export interface DeepWikiEditorProps {
   /** Initial markdown content to populate the editor with */
   initialContent?: string
@@ -104,8 +120,10 @@ export default function DeepWikiEditor({
   const [proposedContent, setProposedContent] = useState<string | null>(null)
   const [originalContentForRevert, setOriginalContentForRevert] = useState<string | null>(null)
   const [wikiMatches, setWikiMatches] = useState<Selection[]>([])
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [saveMessage, setSaveMessage] = useState<string>('')
+
+  // Add new state for memory functionality
+  const [editMemory, setEditMemory] = useState<EditMemory[]>([])
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>({})
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -187,6 +205,123 @@ export default function DeepWikiEditor({
       setLlmResponse("")
     }
   }, [initialContent])
+
+  // Load memory and preferences from localStorage on component mount
+  useEffect(() => {
+    const memoryKey = `editMemory_${owner}_${repo}`
+    const prefsKey = `userPreferences_${owner}_${repo}`
+    
+    try {
+      const savedMemory = localStorage.getItem(memoryKey)
+      if (savedMemory) {
+        const parsed = JSON.parse(savedMemory)
+        // Keep only the last 20 entries
+        setEditMemory(parsed.slice(-20))
+      }
+      
+      const savedPrefs = localStorage.getItem(prefsKey)
+      if (savedPrefs) {
+        setUserPreferences(JSON.parse(savedPrefs))
+      }
+    } catch (error) {
+      console.error('Error loading memory from localStorage:', error)
+    }
+  }, [owner, repo])
+
+  // Save memory to localStorage whenever it changes
+  useEffect(() => {
+    if (!owner || !repo) return
+    
+    const memoryKey = `editMemory_${owner}_${repo}`
+    try {
+      // Keep only the last 20 entries before saving
+      const trimmedMemory = editMemory.slice(-20)
+      localStorage.setItem(memoryKey, JSON.stringify(trimmedMemory))
+      
+      // Update state if we trimmed
+      if (trimmedMemory.length !== editMemory.length) {
+        setEditMemory(trimmedMemory)
+      }
+    } catch (error) {
+      console.error('Error saving memory to localStorage:', error)
+    }
+  }, [editMemory, owner, repo])
+
+  // Save preferences to localStorage whenever they change
+  useEffect(() => {
+    if (!owner || !repo) return
+    
+    const prefsKey = `userPreferences_${owner}_${repo}`
+    try {
+      localStorage.setItem(prefsKey, JSON.stringify(userPreferences))
+    } catch (error) {
+      console.error('Error saving preferences to localStorage:', error)
+    }
+  }, [userPreferences, owner, repo])
+
+  // Function to add new edit to memory
+  const addToEditMemory = useCallback((prompt: string, response: string, contentSnapshot?: string) => {
+    const newEdit: EditMemory = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      prompt,
+      response,
+      pageId: currentPageId || '',
+      contentSnapshot
+    }
+    
+    setEditMemory(prev => {
+      const updated = [...prev, newEdit]
+      // Keep only the last 20 entries
+      return updated.slice(-20)
+    })
+  }, [currentPageId])
+
+  // Function to extract user preferences from prompts
+  const extractUserPreferences = useCallback((prompt: string) => {
+    const lowerPrompt = prompt.toLowerCase()
+    
+    // Extract common preferences
+    const newPrefs: Partial<UserPreferences> = { ...userPreferences }
+    
+    // Detect writing style preferences
+    if (lowerPrompt.includes('formal') || lowerPrompt.includes('professional')) {
+      newPrefs.writingStyle = 'formal'
+    } else if (lowerPrompt.includes('casual') || lowerPrompt.includes('informal')) {
+      newPrefs.writingStyle = 'casual'
+    } else if (lowerPrompt.includes('technical') || lowerPrompt.includes('detailed')) {
+      newPrefs.writingStyle = 'technical'
+    }
+    
+    // Detect format preferences
+    if (lowerPrompt.includes('bullet') || lowerPrompt.includes('list')) {
+      newPrefs.preferredFormats = [...(newPrefs.preferredFormats || []), 'lists']
+    }
+    if (lowerPrompt.includes('table')) {
+      newPrefs.preferredFormats = [...(newPrefs.preferredFormats || []), 'tables']
+    }
+    if (lowerPrompt.includes('code example') || lowerPrompt.includes('example')) {
+      newPrefs.preferredFormats = [...(newPrefs.preferredFormats || []), 'code_examples']
+    }
+    
+    // Extract common instructions
+    if (lowerPrompt.includes('always include') || lowerPrompt.includes('make sure to')) {
+      const instruction = prompt.match(/(always include|make sure to)[^.!?]*/i)?.[0]
+      if (instruction) {
+        newPrefs.commonInstructions = [...(newPrefs.commonInstructions || []), instruction]
+      }
+    }
+    
+    // Remove duplicates and limit array sizes
+    if (newPrefs.preferredFormats) {
+      newPrefs.preferredFormats = [...new Set(newPrefs.preferredFormats)].slice(-5)
+    }
+    if (newPrefs.commonInstructions) {
+      newPrefs.commonInstructions = [...new Set(newPrefs.commonInstructions)].slice(-5)
+    }
+    
+    setUserPreferences(newPrefs as UserPreferences)
+  }, [userPreferences])
 
   const handlePageSelect = async (targetPageId: string) => {
     if (!owner || !repo || targetPageId === currentPageId) return
@@ -396,12 +531,24 @@ export default function DeepWikiEditor({
             .join("\n\n-----\n\n") // delimiter between disjoint selections
         : undefined
 
+      // Prepare memory context for the request
+      const recentMemory = editMemory.slice(-10) // Last 10 edits for context
+      const memoryContext = recentMemory.map(edit => ({
+        timestamp: edit.timestamp,
+        prompt: edit.prompt,
+        response: edit.response,
+        pageId: edit.pageId
+      }))
+
       const requestBody: Record<string, any> = {
         repo_url: repoUrl,
         current_page_title: currentPageId || "Current Page",
         current_page_content: content,
         current_page_files: [],
         edit_request: llmPrompt,
+        // Add memory and preferences
+        edit_memory: memoryContext,
+        user_preferences: userPreferences,
       }
 
       // Only include highlighted_content when we actually have one – keeps the payload clean
@@ -418,7 +565,28 @@ export default function DeepWikiEditor({
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Request failed: ${response.status}`);
+        // Get more detailed error information
+        let errorMessage = `Request failed with status ${response.status}`
+        try {
+          const errorText = await response.text()
+          if (errorText) {
+            const errorData = JSON.parse(errorText)
+            errorMessage = errorData.detail || errorText || errorMessage
+          }
+        } catch {
+          // If we can't parse the error, just use the status
+        }
+        
+        // Provide user-friendly error messages
+        if (response.status === 500) {
+          errorMessage = "The AI service is experiencing issues. Your memory will still be saved. Please try again in a moment."
+        } else if (response.status === 429) {
+          errorMessage = "Too many requests. Please wait a moment before trying again."
+        } else if (response.status === 401 || response.status === 403) {
+          errorMessage = "Authentication error. Please check your credentials."
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const reader = response.body.getReader();
@@ -437,7 +605,21 @@ export default function DeepWikiEditor({
       const parts = completedText.split(splitToken);
       let suggestionsPart = completedText;
       let revisedPart = "";
-      if (parts.length >= 2) {
+
+      // Check if this is an irrelevant query response
+      if (completedText.includes("### IRRELEVANT_QUERY")) {
+        // For irrelevant queries, just show the response and don't modify the document
+        setChatHistory(prev => [...prev, { prompt: llmPrompt, response: completedText }]);
+        setLlmResponse(completedText);
+        setLlmPrompt("");
+        
+        // Add to memory but mark as irrelevant
+        addToEditMemory(llmPrompt, completedText, undefined)
+        
+        // Clear any highlights since we're not making changes
+        setHighlightedRanges([])
+        setWikiMatches([])
+      } else if (parts.length >= 2) {
         suggestionsPart = parts[0].trim();
         revisedPart = parts.slice(1).join(splitToken).trim();
         if (revisedPart.startsWith("###")) {
@@ -494,11 +676,34 @@ export default function DeepWikiEditor({
         setChatHistory(prev => [...prev, { prompt: llmPrompt, response: suggestionsPart }]);
         setLlmResponse(suggestionsPart);
 
+        // Add to memory and extract preferences
+        addToEditMemory(llmPrompt, suggestionsPart, preEditContent)
+        extractUserPreferences(llmPrompt)
+
         // Clear wiki matches after successful submission
         setWikiMatches([])
       }
     } catch (error) {
       console.error("Error submitting to LLM:", error)
+      
+      // Still save the user's prompt to memory even if the request failed
+      // This ensures continuity when they try again
+      const errorResponse = `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Your message has been saved and I'll remember it for future edits.`
+      
+      // Add to memory even on error
+      addToEditMemory(llmPrompt, errorResponse)
+      extractUserPreferences(llmPrompt)
+      
+      // Add to chat history to show the error
+      setChatHistory(prev => [...prev, { 
+        prompt: llmPrompt, 
+        response: errorResponse
+      }])
+      
+      setLlmResponse(errorResponse)
+      
+      // Clear the prompt so user can try again easily
+      setLlmPrompt('')
     } finally {
       setIsProcessing(false)
     }
@@ -981,7 +1186,15 @@ export default function DeepWikiEditor({
                             <div className="w-6 h-6 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-none">
                               <Bot className="w-4 h-4 text-[var(--accent)]" />
                             </div>
-                            <div className="flex-1 text-sm text-[var(--foreground)] whitespace-pre-wrap">{chat.response}</div>
+                            <div className={`flex-1 text-sm text-[var(--foreground)] whitespace-pre-wrap ${
+                              chat.response.includes("### IRRELEVANT_QUERY") 
+                                ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3" 
+                                : ""
+                            }`}>
+                              {chat.response.includes("### IRRELEVANT_QUERY")
+                                ? chat.response.replace("### IRRELEVANT_QUERY", "⚠️ Irrelevant Query")
+                                : chat.response}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -989,6 +1202,55 @@ export default function DeepWikiEditor({
 
                     {/* Input Area */}
                     <div className="flex-none p-6 border-t border-[var(--border-color)]">
+                      {/* Memory and Preferences Status */}
+                      {(editMemory.length > 0 || Object.keys(userPreferences).length > 0) && (
+                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                              AI Memory Active
+                            </span>
+                            <button
+                              onClick={() => {
+                                setEditMemory([])
+                                setUserPreferences({})
+                                if (owner && repo) {
+                                  localStorage.removeItem(`editMemory_${owner}_${repo}`)
+                                  localStorage.removeItem(`userPreferences_${owner}_${repo}`)
+                                }
+                              }}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 px-2 py-1 rounded border border-blue-300 dark:border-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors"
+                            >
+                              Clear Memory
+                            </button>
+                          </div>
+                          
+                          {editMemory.length > 0 && (
+                            <div className="text-xs text-blue-700 dark:text-blue-300 mb-1">
+                              📝 {editMemory.length} recent edit{editMemory.length > 1 ? 's' : ''} remembered
+                            </div>
+                          )}
+                          
+                          {userPreferences.writingStyle && (
+                            <div className="text-xs text-blue-700 dark:text-blue-300 mb-1">
+                              ✍️ Style: {userPreferences.writingStyle}
+                            </div>
+                          )}
+                          
+                          {userPreferences.preferredFormats && userPreferences.preferredFormats.length > 0 && (
+                            <div className="text-xs text-blue-700 dark:text-blue-300 mb-1">
+                              📋 Formats: {userPreferences.preferredFormats.join(', ')}
+                            </div>
+                          )}
+                          
+                          {userPreferences.commonInstructions && userPreferences.commonInstructions.length > 0 && (
+                            <div className="text-xs text-blue-700 dark:text-blue-300">
+                              💡 Instructions: {userPreferences.commonInstructions.slice(0, 2).join('; ')}
+                              {userPreferences.commonInstructions.length > 2 && '...'}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Highlight controls */}
                       {highlightedRanges.length > 0 && (
                         <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
