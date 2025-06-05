@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save, ChevronRight, Sparkles, Send, RefreshCw, PanelLeft, PanelRight,
-  Bot, ChevronDown, ChevronUp, User, Quote, Check, X,
+  Bot, ChevronDown, ChevronUp, User, Quote, Check, X, ArrowLeft,
 } from "lucide-react"
 import Markdown from "./Markdown"
 import WikiTreeView from "./WikiTreeView"
@@ -96,6 +96,8 @@ export default function DeepWikiEditor({
   const [proposedContent, setProposedContent] = useState<string | null>(null)
   const [originalContentForRevert, setOriginalContentForRevert] = useState<string | null>(null)
   const [wikiMatches, setWikiMatches] = useState<Selection[]>([])
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveMessage, setSaveMessage] = useState<string>('')
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -494,6 +496,9 @@ export default function DeepWikiEditor({
 
   const handleSave = async () => {
     try {
+      setSaveStatus('saving')
+      setSaveMessage('Saving...')
+      
       console.log('Starting save process for:', { owner, repo, pageId })
       
       // First update the local cache
@@ -581,10 +586,25 @@ export default function DeepWikiEditor({
       }
       
       // Show success message
-      alert("Content saved successfully!")
+      setSaveStatus('saved')
+      setSaveMessage('Content saved successfully!')
+      
+      // Auto-hide the message after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle')
+        setSaveMessage('')
+      }, 3000)
+      
     } catch (err) {
       console.error('Error saving content:', err)
-      alert(err instanceof Error ? err.message : 'Failed to save content')
+      setSaveStatus('error')
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to save content')
+      
+      // Auto-hide error message after 5 seconds
+      setTimeout(() => {
+        setSaveStatus('idle')
+        setSaveMessage('')
+      }, 5000)
     }
   }
 
@@ -679,11 +699,20 @@ export default function DeepWikiEditor({
       <header className="flex-none z-50 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-6 py-4 shadow-custom">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
+            {owner && repo && (
+              <Link
+                href={`/${owner}/${repo}`}
+                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Wiki
+              </Link>
+            )}
             <Link
               href="/"
               className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
             >
-              <FaHome /> Home
+              <FaHome className="w-4 h-4" /> Home
             </Link>
             <Separator orientation="vertical" className="h-6" />
             <h1 className="text-xl font-semibold text-[var(--foreground)]">DeepWiki Editor</h1>
@@ -707,7 +736,36 @@ export default function DeepWikiEditor({
                 </button>
               </>
             )}
-            <button onClick={handleSave} className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            
+            {/* Save Status Indicator */}
+            {saveStatus !== 'idle' && (
+              <div className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm transition-all duration-200">
+                {saveStatus === 'saving' && (
+                  <>
+                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-[var(--accent-primary)] border-t-transparent"></div>
+                    <span className="text-[var(--muted-foreground)]">Saving...</span>
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <Check className="w-4 h-4 text-green-600" />
+                    <span className="text-green-600">Saved</span>
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <X className="w-4 h-4 text-red-600" />
+                    <span className="text-red-600 max-w-48 truncate" title={saveMessage}>Error</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <button 
+              onClick={handleSave} 
+              disabled={saveStatus === 'saving'}
+              className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Save className="w-4 h-4" />
               Save
             </button>
