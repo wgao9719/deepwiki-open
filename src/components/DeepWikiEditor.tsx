@@ -124,6 +124,8 @@ export default function DeepWikiEditor({
   // Add new state for memory functionality
   const [editMemory, setEditMemory] = useState<EditMemory[]>([])
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({})
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveMessage, setSaveMessage] = useState('')
 
   const router = useRouter()
   const searchParams = useSearchParams()
