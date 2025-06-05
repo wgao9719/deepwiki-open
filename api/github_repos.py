@@ -39,7 +39,7 @@ class GitHubReposFetcher:
         if not self.supabase:
             raise ValueError("Supabase connection not available. Please configure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
     
-    async def fetch_user_repositories(self, github_username: str, github_token: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    async def fetch_user_repositories(self, github_username: str, github_token: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Fetch repositories for a given GitHub username
         
@@ -48,7 +48,7 @@ class GitHubReposFetcher:
             github_token: Optional GitHub token for higher rate limits
             
         Returns:
-            Tuple of (owned_repos, collaborator_repos) lists
+            Tuple of (owned_repos, collaborator_repos, other_repos) lists
         """
         timestamp = datetime.now().isoformat()
         logger.info(f"🚀 [{timestamp}] Starting GitHub API fetch for user: {github_username}")
@@ -56,6 +56,7 @@ class GitHubReposFetcher:
         
         owned_repositories = []
         collaborator_repositories = []
+        other_repositories = []
         
         try:
             headers = {
@@ -75,8 +76,8 @@ class GitHubReposFetcher:
                 logger.info(f"📊 [{timestamp}] Owned repos fetched: {len(owned_repositories)} repositories")
                 
                 logger.info(f"📡 [{timestamp}] Starting to fetch contributed repositories...")
-                await self._fetch_contributed_repos(session, github_username, headers, owned_repositories)
-                logger.info(f"📊 [{timestamp}] After contributions: {len(owned_repositories)} repositories total")
+                await self._fetch_contributed_repos(session, github_username, headers, collaborator_repositories)
+                logger.info(f"📊 [{timestamp}] After contributions: {len(collaborator_repositories)} contributed repositories")
                 
                 # Fetch collaborator and organization member repositories
                 if github_token:  # These endpoints require authentication
@@ -87,27 +88,35 @@ class GitHubReposFetcher:
                     logger.info(f"📡 [{timestamp}] Starting to fetch organization repositories...")
                     await self._fetch_organization_repos(session, github_username, headers, collaborator_repositories)
                     logger.info(f"📊 [{timestamp}] Organization repos fetched: {len(collaborator_repositories)} repositories total")
+                    
+                    logger.info(f"📡 [{timestamp}] Starting to fetch other repositories (starred, watched)...")
+                    await self._fetch_other_repos(session, github_username, headers, other_repositories)
+                    logger.info(f"📊 [{timestamp}] Other repos fetched: {len(other_repositories)} repositories")
                 else:
-                    logger.info(f"⚠️ [{timestamp}] Skipping collaborator/org repos - authentication required")
+                    logger.info(f"⚠️ [{timestamp}] Skipping collaborator/org/other repos - authentication required")
             
             # Deduplicate and sort
             logger.info(f"🔄 [{timestamp}] Deduplicating repositories...")
             owned_repositories = self._deduplicate_repos(owned_repositories)
             collaborator_repositories = self._deduplicate_repos(collaborator_repositories)
+            other_repositories = self._deduplicate_repos(other_repositories)
             
             logger.info(f"✅ [{timestamp}] Final result: {len(owned_repositories)} owned repos, {len(collaborator_repositories)} collaborator repos for {github_username}")
             
-            return owned_repositories, collaborator_repositories
+            return owned_repositories, collaborator_repositories, other_repositories
             
         except Exception as e:
             logger.error(f"💥 [{timestamp}] Error fetching repositories for {github_username}: {str(e)}")
             logger.error(f"🔍 [{timestamp}] Exception type: {type(e).__name__}")
-            return [], []
+            return [], [], []
     
     async def _fetch_owned_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
         """Fetch repositories owned by the user"""
         timestamp = datetime.now().isoformat()
         logger.info(f"👤 [{timestamp}] Fetching owned repositories for {username}")
+        
+        # Keep track of base repos we've already added to avoid duplicates
+        base_repos_added = set()
         
         try:
             page = 1
@@ -115,7 +124,7 @@ class GitHubReposFetcher:
             while len(repositories) < 100:  # Limit total fetched repos
                 url = f"https://api.github.com/users/{username}/repos"
                 params = {
-                    'type': 'public',
+                    'type': 'owner',
                     'sort': 'updated',
                     'direction': 'desc',
                     'per_page': 30,
@@ -143,6 +152,7 @@ class GitHubReposFetcher:
                         break
                     
                     for repo in repos:
+                        # API with type='owner' only returns owned repositories
                         repositories.append({
                             'name': repo['name'],
                             'full_name': repo['full_name'],
@@ -154,9 +164,65 @@ class GitHubReposFetcher:
                             'updated_at': repo['updated_at'],
                             'owner': repo['owner']['login'],
                             'is_owner': True,
+                            'is_collaborator': repo['fork'],  # Mark forks as collaborator repos
                             'is_fork': repo['fork']
                         })
                         total_fetched += 1
+                        
+                        # If this is a fork, also add the base repository as a collaborator repo
+                        if repo['fork'] and 'source' in repo and repo['source']:
+                            base_repo_full_name = repo['source']['full_name']
+                            
+                            # Only add base repo if we haven't already added it
+                            if base_repo_full_name not in base_repos_added:
+                                base_repos_added.add(base_repo_full_name)
+                                
+                                logger.info(f"🍴 [{timestamp}] Found fork {repo['full_name']}, adding base repo {base_repo_full_name} as collaborator")
+                                
+                                repositories.append({
+                                    'name': repo['source']['name'],
+                                    'full_name': repo['source']['full_name'],
+                                    'description': repo['source'].get('description', ''),
+                                    'html_url': repo['source']['html_url'],
+                                    'language': repo['source'].get('language'),
+                                    'stars': repo['source']['stargazers_count'],
+                                    'forks': repo['source']['forks_count'],
+                                    'updated_at': repo['source']['updated_at'],
+                                    'owner': repo['source']['owner']['login'],
+                                    'is_owner': False,
+                                    'is_collaborator': True,  # Base repo of a fork is considered collaboration
+                                    'is_fork': repo['source']['fork'],
+                                    'relationship': 'base_of_fork'
+                                })
+                        elif repo['fork']:
+                            # If source info not in basic response, fetch detailed repo info
+                            logger.info(f"🍴 [{timestamp}] Found fork {repo['full_name']} without source info, fetching details...")
+                            detailed_repo = await self._fetch_repo_details(session, repo['full_name'], headers)
+                            
+                            if detailed_repo and 'source' in detailed_repo and detailed_repo['source']:
+                                base_repo_full_name = detailed_repo['source']['full_name']
+                                
+                                # Only add base repo if we haven't already added it
+                                if base_repo_full_name not in base_repos_added:
+                                    base_repos_added.add(base_repo_full_name)
+                                    
+                                    logger.info(f"🍴 [{timestamp}] Adding base repo {base_repo_full_name} as collaborator from detailed fetch")
+                                    
+                                    repositories.append({
+                                        'name': detailed_repo['source']['name'],
+                                        'full_name': detailed_repo['source']['full_name'],
+                                        'description': detailed_repo['source'].get('description', ''),
+                                        'html_url': detailed_repo['source']['html_url'],
+                                        'language': detailed_repo['source'].get('language'),
+                                        'stars': detailed_repo['source']['stargazers_count'],
+                                        'forks': detailed_repo['source']['forks_count'],
+                                        'updated_at': detailed_repo['source']['updated_at'],
+                                        'owner': detailed_repo['source']['owner']['login'],
+                                        'is_owner': False,
+                                        'is_collaborator': True,  # Base repo of a fork is considered collaboration
+                                        'is_fork': detailed_repo['source']['fork'],
+                                        'relationship': 'base_of_fork'
+                                    })
                     
                     logger.info(f"✅ [{timestamp}] Added {len(repos)} repos from page {page}, total so far: {total_fetched}")
                     page += 1
@@ -213,6 +279,7 @@ class GitHubReposFetcher:
                                 # Fetch repository details
                                 repo_details = await self._fetch_repo_details(session, repo_name, headers)
                                 if repo_details:
+                                    is_owner = repo_details['owner']['login'] == username
                                     repositories.append({
                                         'name': repo_details['name'],
                                         'full_name': repo_details['full_name'],
@@ -223,8 +290,10 @@ class GitHubReposFetcher:
                                         'forks': repo_details['forks_count'],
                                         'updated_at': repo_details['updated_at'],
                                         'owner': repo_details['owner']['login'],
-                                        'is_owner': repo_details['owner']['login'] == username,
-                                        'is_fork': repo_details['fork']
+                                        'is_owner': is_owner,
+                                        'is_collaborator': not is_owner,  # If not owner, then it's a contribution
+                                        'is_fork': repo_details['fork'],
+                                        'relationship': 'contributor' if not is_owner else 'owner'
                                     })
                                     new_repos_found += 1
                     
@@ -282,6 +351,9 @@ class GitHubReposFetcher:
         timestamp = datetime.now().isoformat()
         logger.info(f"🤝 [{timestamp}] Fetching collaborator repositories for {username}")
         
+        # Keep track of base repos we've already added to avoid duplicates
+        base_repos_added = set()
+        
         try:
             page = 1
             total_fetched = 0
@@ -316,6 +388,7 @@ class GitHubReposFetcher:
                         break
                     
                     for repo in repos:
+                        is_owner = repo['owner']['login'] == username
                         repositories.append({
                             'name': repo['name'],
                             'full_name': repo['full_name'],
@@ -326,11 +399,43 @@ class GitHubReposFetcher:
                             'forks': repo['forks_count'],
                             'updated_at': repo['updated_at'],
                             'owner': repo['owner']['login'],
-                            'is_owner': repo['owner']['login'] == username,
+                            'is_owner': is_owner,
+                            'is_collaborator': True,  # All repos in this endpoint are collaborator repos
                             'is_fork': repo['fork'],
-                            'relationship': 'collaborator'
+                            'relationship': 'collaborator' if not is_owner else 'owner'
                         })
                         total_fetched += 1
+                        
+                        # If this is a fork, also add the base repository as a collaborator repo
+                        if repo['fork']:
+                            # Fetch detailed repo info to get source information
+                            logger.info(f"🍴 [{timestamp}] Found collaborator fork {repo['full_name']}, fetching details for base repo...")
+                            detailed_repo = await self._fetch_repo_details(session, repo['full_name'], headers)
+                            
+                            if detailed_repo and 'source' in detailed_repo and detailed_repo['source']:
+                                base_repo_full_name = detailed_repo['source']['full_name']
+                                
+                                # Only add base repo if we haven't already added it
+                                if base_repo_full_name not in base_repos_added:
+                                    base_repos_added.add(base_repo_full_name)
+                                    
+                                    logger.info(f"🍴 [{timestamp}] Adding base repo {base_repo_full_name} as collaborator from collaborator fork")
+                                    
+                                    repositories.append({
+                                        'name': detailed_repo['source']['name'],
+                                        'full_name': detailed_repo['source']['full_name'],
+                                        'description': detailed_repo['source'].get('description', ''),
+                                        'html_url': detailed_repo['source']['html_url'],
+                                        'language': detailed_repo['source'].get('language'),
+                                        'stars': detailed_repo['source']['stargazers_count'],
+                                        'forks': detailed_repo['source']['forks_count'],
+                                        'updated_at': detailed_repo['source']['updated_at'],
+                                        'owner': detailed_repo['source']['owner']['login'],
+                                        'is_owner': False,
+                                        'is_collaborator': True,  # Base repo of a fork is considered collaboration
+                                        'is_fork': detailed_repo['source']['fork'],
+                                        'relationship': 'base_of_collaborator_fork'
+                                    })
                     
                     logger.info(f"✅ [{timestamp}] Added {len(repos)} collaborator repos from page {page}, total so far: {total_fetched}")
                     page += 1
@@ -394,6 +499,7 @@ class GitHubReposFetcher:
                                         'updated_at': repo['updated_at'],
                                         'owner': repo['owner']['login'],
                                         'is_owner': False,
+                                        'is_collaborator': True,  # Organization member has collaborator access
                                         'is_fork': repo['fork'],
                                         'relationship': 'organization_member'
                                     })
@@ -403,6 +509,70 @@ class GitHubReposFetcher:
                             
         except Exception as e:
             logger.error(f"💥 [{timestamp}] Error fetching organization repos for {username}: {str(e)}")
+    
+    async def _fetch_other_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
+        """Fetch other repositories (starred, watched) the user has interacted with"""
+        timestamp = datetime.now().isoformat()
+        logger.info(f"⭐ [{timestamp}] Fetching other repositories (starred) for {username}")
+        
+        try:
+            page = 1
+            total_fetched = 0
+            while len(repositories) < 30 and page <= 3:  # Limit to prevent excessive API calls
+                url = f"https://api.github.com/user/starred"
+                params = {
+                    'sort': 'updated',
+                    'direction': 'desc',
+                    'per_page': 30,
+                    'page': page
+                }
+                
+                logger.info(f"📡 [{timestamp}] API Call - GET {url} (page {page}) - starred repos")
+                
+                async with session.get(url, headers=headers, params=params) as response:
+                    logger.info(f"📊 [{timestamp}] Starred response status: {response.status}")
+                    
+                    if response.status != 200:
+                        logger.warning(f"⚠️ [{timestamp}] Failed to fetch starred repos for {username}: {response.status}")
+                        if response.status == 403:
+                            rate_limit_remaining = response.headers.get('X-RateLimit-Remaining')
+                            rate_limit_reset = response.headers.get('X-RateLimit-Reset')
+                            logger.warning(f"🚫 [{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
+                        break
+                    
+                    repos = await response.json()
+                    logger.info(f"📦 [{timestamp}] Received {len(repos)} starred repositories on page {page}")
+                    
+                    if not repos:
+                        logger.info(f"🏁 [{timestamp}] No more starred repositories on page {page}, stopping")
+                        break
+                    
+                    for repo in repos:
+                        # Only add if user doesn't own it and isn't a collaborator
+                        is_owner = repo['owner']['login'] == username
+                        if not is_owner:  # Only add non-owned repositories
+                            repositories.append({
+                                'name': repo['name'],
+                                'full_name': repo['full_name'],
+                                'description': repo.get('description', ''),
+                                'html_url': repo['html_url'],
+                                'language': repo.get('language'),
+                                'stars': repo['stargazers_count'],
+                                'forks': repo['forks_count'],
+                                'updated_at': repo['updated_at'],
+                                'owner': repo['owner']['login'],
+                                'is_owner': False,
+                                'is_collaborator': False,
+                                'is_fork': repo['fork'],
+                                'relationship': 'starred'
+                            })
+                            total_fetched += 1
+                    
+                    logger.info(f"✅ [{timestamp}] Added {len([r for r in repos if r['owner']['login'] != username])} starred repos from page {page}, total so far: {total_fetched}")
+                    page += 1
+                    
+        except Exception as e:
+            logger.error(f"💥 [{timestamp}] Error fetching starred repos for {username}: {str(e)}")
     
     async def update_user_github_repos_initial(self, user_id: str, github_username: str, github_token: Optional[str] = None) -> bool:
         """
@@ -432,7 +602,7 @@ class GitHubReposFetcher:
             
             # For initial fetch, don't check rate limiting
             logger.info(f"📡 [{timestamp}] Fetching repositories from GitHub API...")
-            owned_repositories, collaborator_repositories = await self.fetch_user_repositories(github_username, github_token)
+            owned_repositories, collaborator_repositories, other_repositories = await self.fetch_user_repositories(github_username, github_token)
             logger.info(f"📊 [{timestamp}] Fetched {len(owned_repositories)} owned repos and {len(collaborator_repositories)} collaborator repos from GitHub")
             
             # Update user profile with repositories
@@ -493,7 +663,7 @@ class GitHubReposFetcher:
             
             # Fetch repositories
             logger.info(f"Fetching GitHub repositories for user {github_username}")
-            owned_repositories, collaborator_repositories = await self.fetch_user_repositories(github_username, github_token)
+            owned_repositories, collaborator_repositories, other_repositories = await self.fetch_user_repositories(github_username, github_token)
             
             # Update user profile with repositories
             update_data = {
@@ -523,7 +693,7 @@ class GitHubReposFetcher:
             logger.error(f"Error updating GitHub repos for user {user_id}: {str(e)}")
             return False
     
-    async def get_user_github_repos(self, user_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    async def get_user_github_repos(self, user_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Get GitHub repositories for a user from the database
         
@@ -531,7 +701,7 @@ class GitHubReposFetcher:
             user_id: Supabase user ID
             
         Returns:
-            Tuple of (owned_repos, collaborator_repos) lists
+            Tuple of (owned_repos, collaborator_repos, other_repos) lists
         """
         try:
             self._check_supabase_connection()
@@ -542,13 +712,13 @@ class GitHubReposFetcher:
                 profile_data = response.data[0]
                 owned_repos = profile_data.get('github_repos', [])
                 collaborator_repos = profile_data.get('github_collaborator_repos', [])
-                return owned_repos, collaborator_repos
+                return owned_repos, collaborator_repos, []
             else:
-                return [], []
+                return [], [], []
                 
         except Exception as e:
             logger.error(f"Error getting GitHub repos for user {user_id}: {str(e)}")
-            return [], []
+            return [], [], []
 
 # Global instance
 github_fetcher = GitHubReposFetcher()

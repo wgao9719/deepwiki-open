@@ -856,10 +856,8 @@ async def search_users_by_repo(
         
         # Search in both owned repos and collaborator repos
         owned_response = supabase.table('profiles').select(
-            'id, username, github_username, full_name, avatar_url, github_repos'
-        ).filter(
-            'github_repos', 'cs', f'[{{"full_name": "{repo_name}"}}]'
-        ).limit(limit).execute()
+            'id, github_username, github_repos, github_repos_updated_at, github_collaborator_repos, github_collaborator_repos_updated_at, created_at'
+        ).filter('github_repos', 'cs', f'[{{"full_name":"{repo_name}"}}]').execute()
         
         collaborator_response = supabase.table('profiles').select(
             'id, username, github_username, full_name, avatar_url, github_collaborator_repos'

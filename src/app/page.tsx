@@ -456,9 +456,11 @@ export default function Home() {
         </main>
 
         {/* Sidebar */}
-        <aside className="flex-shrink-0 flex flex-col gap-4">
-          <GitHubReposSidebar />
-          <GitHubCollaboratorReposSidebar />
+        <aside className="flex-shrink-0 w-80 overflow-y-auto max-h-full">
+          <div className="flex flex-col gap-4 sticky top-0">
+            <GitHubReposSidebar />
+            <GitHubCollaboratorReposSidebar />
+          </div>
         </aside>
       </div>
 

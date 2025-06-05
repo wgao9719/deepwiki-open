@@ -14,6 +14,7 @@ interface GitHubRepo {
   updated_at: string;
   owner: string;
   is_owner: boolean;
+  is_collaborator: boolean;
   is_fork: boolean;
   relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
@@ -29,6 +30,8 @@ interface UserProfile {
   github_repos_updated_at: string;
   github_collaborator_repos: GitHubRepo[];
   github_collaborator_repos_updated_at: string;
+  github_other_repos?: GitHubRepo[];
+  github_other_repos_updated_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -38,7 +41,7 @@ interface Props {
   maxRepos?: number;
   showUpdateButton?: boolean;
   className?: string;
-  repoType?: 'owned' | 'collaborator' | 'all';
+  repoType?: 'owned' | 'collaborator' | 'other' | 'all';
 }
 
 const UserGitHubRepos: React.FC<Props> = ({ 
@@ -51,6 +54,7 @@ const UserGitHubRepos: React.FC<Props> = ({
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [ownedRepositories, setOwnedRepositories] = useState<GitHubRepo[]>([]);
   const [collaboratorRepositories, setCollaboratorRepositories] = useState<GitHubRepo[]>([]);
+  const [otherRepositories, setOtherRepositories] = useState<GitHubRepo[]>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +79,29 @@ const UserGitHubRepos: React.FC<Props> = ({
       
       const data = await response.json();
       setProfile(data.profile);
-      setOwnedRepositories(data.profile.github_repos || []);
-      setCollaboratorRepositories(data.profile.github_collaborator_repos || []);
+      
+      // Separate owned and collaborator repositories properly
+      const allRepos = [
+        ...(data.profile.github_repos || []),
+        ...(data.profile.github_collaborator_repos || [])
+      ];
+      
+      // Filter owned repositories (is_owner = true AND not a fork)
+      const owned = allRepos.filter(repo => repo.is_owner === true && repo.is_fork === false);
+      
+      // Filter collaborator repositories: explicit collaborator OR user-owned forks
+      const collaborator = allRepos.filter(repo => 
+        repo.is_collaborator === true || 
+        (repo.is_owner === true && repo.is_fork === true) ||
+        (repo.is_owner === false && repo.relationship && repo.relationship !== 'starred')
+      );
+      
+      // Filter other repositories (starred, watched, etc.) - temporarily empty until database supports it
+      const other: GitHubRepo[] = [];
+      
+      setOwnedRepositories(owned);
+      setCollaboratorRepositories(collaborator);
+      setOtherRepositories(other);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch repositories');
       console.error('Error fetching user profile:', err);
@@ -168,9 +193,11 @@ const UserGitHubRepos: React.FC<Props> = ({
         return ownedRepositories;
       case 'collaborator':
         return collaboratorRepositories;
+      case 'other':
+        return otherRepositories;
       case 'all':
       default:
-        return [...ownedRepositories, ...collaboratorRepositories].sort((a, b) => 
+        return [...ownedRepositories, ...collaboratorRepositories, ...otherRepositories].sort((a, b) => 
           new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
         );
     }
@@ -182,6 +209,8 @@ const UserGitHubRepos: React.FC<Props> = ({
         return 'GitHub Repositories';
       case 'collaborator':
         return 'Contributor Repositories';
+      case 'other':
+        return 'Other Repositories';
       case 'all':
       default:
         return 'GitHub Repositories';
@@ -196,9 +225,11 @@ const UserGitHubRepos: React.FC<Props> = ({
         return `@${profile.github_username} • ${ownedRepositories.length} repositories`;
       case 'collaborator':
         return `@${profile.github_username} • ${collaboratorRepositories.length} contributor repositories`;
+      case 'other':
+        return `@${profile.github_username} • ${otherRepositories.length} other repositories`;
       case 'all':
       default:
-        const total = ownedRepositories.length + collaboratorRepositories.length;
+        const total = ownedRepositories.length + collaboratorRepositories.length + otherRepositories.length;
         return `@${profile.github_username} • ${total} repositories total`;
     }
   };
@@ -324,9 +355,16 @@ const UserGitHubRepos: React.FC<Props> = ({
                         Owner
                       </span>
                     )}
-                    {repo.relationship && (
+                    {repo.is_collaborator && (
                       <span className="text-xs bg-[var(--highlight)]/10 text-[var(--highlight)] px-2 py-0.5 rounded-full border border-[var(--highlight)]/30">
-                        {repo.relationship === 'collaborator' ? 'Collaborator' : 'Org Member'}
+                        {repo.relationship === 'contributor' ? 'Contributor' : 
+                         repo.relationship === 'collaborator' ? 'Collaborator' : 
+                         repo.relationship === 'organization_member' ? 'Org Member' : 'Collaborator'}
+                      </span>
+                    )}
+                    {repo.relationship === 'starred' && (
+                      <span className="text-xs bg-yellow-500/10 text-yellow-600 px-2 py-0.5 rounded-full border border-yellow-500/30">
+                        Starred
                       </span>
                     )}
                   </div>

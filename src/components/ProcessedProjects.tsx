@@ -27,6 +27,7 @@ interface UserGitHubRepo {
   updated_at: string;
   owner: string;
   is_owner: boolean;
+  is_collaborator: boolean;
   is_fork: boolean;
   relationship?: string; // 'collaborator' or 'organization_member' for collaborator repos
 }
@@ -64,7 +65,7 @@ export default function ProcessedProjects({
     errorLoading: 'Error loading projects:',
     backToHome: 'Back to Home',
     yourRepositories: 'Your Repositories',
-    yourContributorRepositories: 'Your Contributor Repositories',
+    yourContributorRepositories: 'Collaborated Repositories',
     otherRepositories: 'Other Repositories'
   };
 
@@ -121,8 +122,13 @@ export default function ProcessedProjects({
 
   // Categorize projects based on user repositories
   const categorizedProjects = useMemo(() => {
-    const userRepoNames = new Set(userRepositories.map(repo => repo.name.toLowerCase()));
-    const collaboratorRepoNames = new Set(collaboratorRepositories.map(repo => repo.name.toLowerCase()));
+    // Create sets using the full repository name (owner/repo) for accurate matching
+    const userRepoFullNames = new Set(userRepositories.map(repo => repo.full_name.toLowerCase()));
+    const collaboratorRepoFullNames = new Set(collaboratorRepositories.map(repo => repo.full_name.toLowerCase()));
+    
+    // Debug logging to help verify fork base repositories are included
+    console.log('User repositories:', userRepositories.map(r => ({ name: r.full_name, is_fork: r.is_fork, is_collaborator: r.is_collaborator })));
+    console.log('Collaborator repositories:', collaboratorRepositories.map(r => ({ name: r.full_name, is_collaborator: r.is_collaborator, relationship: r.relationship })));
     
     let filteredProjects = projects;
     
@@ -143,12 +149,18 @@ export default function ProcessedProjects({
     const otherProjects: ProcessedProject[] = [];
 
     filteredProjects.forEach(project => {
-      if (userRepoNames.has(project.repo.toLowerCase())) {
+      // Create the full repository name for the project
+      const projectFullName = `${project.owner}/${project.repo}`.toLowerCase();
+      
+      if (userRepoFullNames.has(projectFullName)) {
         userProjects.push(project);
-      } else if (collaboratorRepoNames.has(project.repo.toLowerCase())) {
+        console.log(`Project ${projectFullName} categorized as USER repository`);
+      } else if (collaboratorRepoFullNames.has(projectFullName)) {
         collaboratorProjects.push(project);
+        console.log(`Project ${projectFullName} categorized as COLLABORATOR repository`);
       } else {
         otherProjects.push(project);
+        console.log(`Project ${projectFullName} categorized as OTHER repository`);
       }
     });
 
@@ -168,8 +180,8 @@ export default function ProcessedProjects({
       userProjects: finalUserProjects,
       collaboratorProjects: finalCollaboratorProjects,
       otherProjects: finalOtherProjects,
-      hasUserRepos: userRepoNames.size > 0 && finalUserProjects.length > 0,
-      hasCollaboratorRepos: collaboratorRepoNames.size > 0 && finalCollaboratorProjects.length > 0
+      hasUserRepos: userRepoFullNames.size > 0 && finalUserProjects.length > 0,
+      hasCollaboratorRepos: collaboratorRepoFullNames.size > 0 && finalCollaboratorProjects.length > 0
     };
   }, [projects, userRepositories, collaboratorRepositories, searchQuery, maxItems]);
 
@@ -203,19 +215,21 @@ export default function ProcessedProjects({
     }
   };
 
-  const renderProjectsList = (projectsList: ProcessedProject[]) => (
+  const renderProjectsList = (projectsList: ProcessedProject[], showDeleteButton: boolean = true) => (
     <div className={viewMode === 'card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-2'}>
       {projectsList.map((project) => (
         viewMode === 'card' ? (
           <div key={project.id} className="relative p-4 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02]">
-            <button
-              type="button"
-              onClick={() => handleDelete(project)}
-              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-              title="Delete project"
-            >
-              <FaTimes className="h-4 w-4" />
-            </button>
+            {showDeleteButton && (
+              <button
+                type="button"
+                onClick={() => handleDelete(project)}
+                className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                title="Delete project"
+              >
+                <FaTimes className="h-4 w-4" />
+              </button>
+            )}
             <Link
               href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
               className="block"
@@ -238,14 +252,16 @@ export default function ProcessedProjects({
           </div>
         ) : (
           <div key={project.id} className="relative p-3 border border-[var(--border-color)] rounded-lg bg-[var(--card-bg)] hover:bg-[var(--background)] transition-colors">
-            <button
-              type="button"
-              onClick={() => handleDelete(project)}
-              className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-              title="Delete project"
-            >
-              <FaTimes className="h-4 w-4" />
-            </button>
+            {showDeleteButton && (
+              <button
+                type="button"
+                onClick={() => handleDelete(project)}
+                className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                title="Delete project"
+              >
+                <FaTimes className="h-4 w-4" />
+              </button>
+            )}
             <Link
               href={`/${project.owner}/${project.repo}?type=${project.repo_type}&language=${project.language}`}
               className="flex items-center justify-between"
@@ -373,7 +389,7 @@ export default function ProcessedProjects({
                   </span>
                 </div>
               )}
-              {renderProjectsList(categorizedProjects.otherProjects)}
+              {renderProjectsList(categorizedProjects.otherProjects, false)}
             </div>
           )}
 
