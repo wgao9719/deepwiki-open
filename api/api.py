@@ -365,12 +365,16 @@ def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
 # Import the simplified chat implementation
 from api.simple_chat import chat_completions_stream
 from api.websocket_wiki import handle_websocket_chat
+from api.wiki_edit import app as wiki_edit_app  # Import the wiki edit API
 
 # Add the chat_completions_stream endpoint to the main app
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
 
 # Add the WebSocket endpoint
 app.add_websocket_route("/ws/chat", handle_websocket_chat)
+
+# Mount the wiki edit API
+app.mount("/wiki", wiki_edit_app)  # Mount the wiki edit API under /wiki prefix
 
 # --- Wiki Cache Helper Functions ---
 
@@ -901,3 +905,34 @@ async def get_user_github_repos_status(user_id: str):
     except Exception as e:
         logger.error(f"Error checking GitHub repos status: {e}")
         raise HTTPException(status_code=500, detail="Failed to check repository status")
+
+@app.get("/debug/memory/{user_id}")
+async def debug_memory(
+    user_id: str,
+    query: str = "",
+    namespace: str = "chat",  # or "chat"
+    k: int = 5
+):
+    """Debug endpoint to inspect memories for a user.
+    
+    Args:
+        user_id: The user's ID (from Supabase)
+        query: Optional search term
+        namespace: Which memory type to search ("prefs" or "chat")
+        k: How many results to return
+    """
+    try:
+        from api.memory.semantic import vector_store
+        ns = ("mem", namespace, user_id)
+        if query:
+            results = vector_store.search(ns, query, limit=k)
+        else:
+            results = vector_store.search(ns, limit=k)
+        return {
+            "user_id": user_id,
+            "namespace": namespace,
+            "query": query or "(most recent)",
+            "results": results
+        }
+    except Exception as e:
+        return {"error": str(e)}

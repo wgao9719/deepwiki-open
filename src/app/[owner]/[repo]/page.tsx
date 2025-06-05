@@ -3,7 +3,7 @@
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaComments, FaTimes } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaComments, FaTimes, FaEdit } from 'react-icons/fa';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
 import Markdown from '@/components/Markdown';
@@ -244,6 +244,12 @@ export default function RepoWikiPage() {
   // State for Ask modal
   const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const askComponentRef = useRef<{ clearConversation: () => void } | null>(null);
+
+  // State for Wiki Edit Chat modal
+  const [isWikiEditChatOpen, setIsWikiEditChatOpen] = useState(false);
+  const [wikiEditInput, setWikiEditInput] = useState('');
+  const [wikiEditResponse, setWikiEditResponse] = useState('');
+  const [isWikiEditLoading, setIsWikiEditLoading] = useState(false);
 
   // Memoize repo info to avoid triggering updates in callbacks
 
@@ -1695,6 +1701,139 @@ IMPORTANT:
 
   const [isModelSelectionModalOpen, setIsModelSelectionModalOpen] = useState(false);
 
+  // Handle wiki edit request
+  const handleWikiEditRequest = useCallback(async (editRequest: string) => {
+    if (!currentPageId || !generatedPages[currentPageId] || !editRequest.trim()) {
+      return;
+    }
+
+    try {
+      setIsWikiEditLoading(true);
+      setWikiEditResponse('');
+
+      const currentPage = generatedPages[currentPageId];
+      const editPrompt = `You are an expert technical writer and AI assistant specialized in editing and improving software documentation wikis for GitHub repositories. You MUST produce the highest quality writing possible that is grounded in the actual codebase and looks as human-written as possible.'
+
+CONTEXT:
+- You are editing a wiki page titled: "${currentPage.title}"
+- The page covers files: ${currentPage.filePaths.join(', ')}
+- Repository: ${effectiveRepoInfo.owner}/${effectiveRepoInfo.repo}
+
+CURRENT PAGE CONTENT:
+${currentPage.content}
+
+USER EDIT REQUEST:
+${editRequest}
+
+INSTRUCTIONS:
+1. Use the RAG context from the codebase to provide accurate, code-based suggestions
+2. Suggest specific improvements, additions, or modifications to the wiki content
+3. Maintain the existing markdown structure and formatting
+4. Ensure all suggestions are grounded in the actual codebase
+5. If adding code examples, use real code from the repository files
+6. Provide your suggestions in a clear, structured format
+
+Please provide specific editing suggestions based on the user's request and the codebase context.`;
+
+      // Prepare request body for the chat API
+      const requestBody: Record<string, any> = {
+        repo_url: getRepoUrl(effectiveRepoInfo),
+        type: effectiveRepoInfo.type,
+        messages: [{
+          role: 'user',
+          content: editPrompt
+        }],
+        provider: selectedProviderState,
+        model: selectedModelState,
+        language: language,
+        token: currentToken || undefined
+      };
+
+      // Add custom model if applicable
+      if (isCustomSelectedModelState && customSelectedModelState) {
+        requestBody.custom_model = customSelectedModelState;
+      }
+
+      // Make the API call to the chat endpoint
+      const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL || 'http://localhost:8001';
+      const response = await fetch(`${serverBaseUrl}/wiki/edit/suggestions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repo_url: getRepoUrl(effectiveRepoInfo),
+          current_page_title: currentPage.title,
+          current_page_content: currentPage.content,
+          current_page_files: currentPage.filePaths,
+          edit_request: editRequest,
+          token: currentToken || undefined,
+          type: effectiveRepoInfo.type,
+          provider: selectedProviderState,
+          model: selectedModelState,
+          language: language
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status} - ${response.statusText}`);
+      }
+
+      // Process the streaming response
+      let fullResponse = '';
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          fullResponse += chunk;
+          
+          // Update the response in real-time
+          setWikiEditResponse(fullResponse);
+        }
+        
+        // Ensure final decoding
+        const finalChunk = decoder.decode();
+        if (finalChunk) {
+          fullResponse += finalChunk;
+          setWikiEditResponse(fullResponse);
+        }
+      } catch (readError) {
+        console.error('Error reading stream:', readError);
+        throw new Error('Error processing response stream');
+      }
+
+    } catch (error) {
+      console.error('Error in wiki edit request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setWikiEditResponse(`Error: ${errorMessage}`);
+    } finally {
+      setIsWikiEditLoading(false);
+    }
+  }, [currentPageId, generatedPages, effectiveRepoInfo, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, currentToken]);
+
+  // Handle quick edit suggestions
+  const handleQuickEdit = useCallback((suggestion: string) => {
+    setWikiEditInput(suggestion);
+    handleWikiEditRequest(suggestion);
+  }, [handleWikiEditRequest]);
+
+  // Clear wiki edit state when modal opens/closes
+  const handleWikiEditModalToggle = useCallback((isOpen: boolean) => {
+    setIsWikiEditChatOpen(isOpen);
+    if (!isOpen) {
+      // Clear state when closing modal
+      setWikiEditInput('');
+      setWikiEditResponse('');
+    }
+  }, []);
+
   return (
     <div className="h-screen paper-texture p-4 md:p-8 flex flex-col">
       <style>{wikiStyles}</style>
@@ -1874,6 +2013,14 @@ IMPORTANT:
                       <FaFileExport className="mr-2" />
                       {messages.repoPage?.exportAsJson || 'Export as JSON'}
                     </button>
+                    <button
+                      onClick={() => handleWikiEditModalToggle(true)}
+                      disabled={!currentPageId || !generatedPages[currentPageId]}
+                      className="btn-japanese flex items-center text-xs px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FaEdit className="mr-2" />
+                      {messages.repoPage?.editWithAI || 'Edit with AI'}
+                    </button>
                   </div>
                   {exportError && (
                     <div className="mt-2 text-xs text-[var(--highlight)]">
@@ -1991,6 +2138,114 @@ IMPORTANT:
               language={language}
               onRef={(ref) => (askComponentRef.current = ref)}
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Wiki Edit Chat Modal */}
+      <div className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isWikiEditChatOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-[var(--border-color)]">
+            <div>
+              <h3 className="text-lg font-semibold">Edit Wiki Page</h3>
+              <p className="text-sm text-[var(--muted)]">
+                {currentPageId && generatedPages[currentPageId]?.title}
+              </p>
+            </div>
+            <button 
+              onClick={() => handleWikiEditModalToggle(false)}
+              className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+            >
+              <FaTimes className="text-xl" />
+            </button>
+          </div>
+          
+          {/* Content */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Chat Interface - Left Side */}
+            <div className="w-1/2 border-r border-[var(--border-color)] p-4">
+              <h4 className="text-md font-semibold mb-3">AI Chat Assistant</h4>
+              <div className="bg-[var(--background)]/50 p-4 rounded-lg">
+                <p className="text-sm text-[var(--muted)] mb-4">
+                  Ask the AI to help edit your wiki page. You can request improvements, 
+                  additions, restructuring, or ask questions about the codebase.
+                </p>
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => handleQuickEdit('Improve clarity and readability of this wiki page')}
+                    disabled={isWikiEditLoading}
+                    className="w-full text-left text-xs px-3 py-2 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-md hover:bg-[var(--accent-primary)]/20 transition-colors border border-[var(--accent-primary)]/30 disabled:opacity-50"
+                  >
+                    Improve clarity and readability
+                  </button>
+                  <button 
+                    onClick={() => handleQuickEdit('Add relevant code examples from the repository to illustrate the concepts')}
+                    disabled={isWikiEditLoading}
+                    className="w-full text-left text-xs px-3 py-2 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-md hover:bg-[var(--accent-primary)]/20 transition-colors border border-[var(--accent-primary)]/30 disabled:opacity-50"
+                  >
+                    Add code examples
+                  </button>
+                  <button 
+                    onClick={() => handleQuickEdit('Expand the technical details and provide more in-depth explanations')}
+                    disabled={isWikiEditLoading}
+                    className="w-full text-left text-xs px-3 py-2 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-md hover:bg-[var(--accent-primary)]/20 transition-colors border border-[var(--accent-primary)]/30 disabled:opacity-50"
+                  >
+                    Expand technical details
+                  </button>
+                  <button 
+                    onClick={() => handleQuickEdit('Fix any formatting issues and improve the markdown structure')}
+                    disabled={isWikiEditLoading}
+                    className="w-full text-left text-xs px-3 py-2 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] rounded-md hover:bg-[var(--accent-primary)]/20 transition-colors border border-[var(--accent-primary)]/30 disabled:opacity-50"
+                  >
+                    Fix formatting issues
+                  </button>
+                </div>
+                <div className="mt-4">
+                  <textarea 
+                    value={wikiEditInput}
+                    onChange={(e) => setWikiEditInput(e.target.value)}
+                    placeholder="Type your editing request here..."
+                    className="w-full h-24 p-3 text-sm bg-[var(--background)] border border-[var(--border-color)] rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50"
+                    disabled={isWikiEditLoading}
+                  />
+                  <button 
+                    onClick={() => handleWikiEditRequest(wikiEditInput)}
+                    disabled={isWikiEditLoading || !wikiEditInput.trim()}
+                    className="mt-2 px-4 py-2 bg-[var(--accent-primary)] text-white rounded-md hover:bg-[var(--accent-primary)]/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isWikiEditLoading ? 'Processing...' : 'Send Request'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* AI Response - Right Side */}
+            <div className="w-1/2 p-4 overflow-y-auto">
+              <h4 className="text-md font-semibold mb-3">AI Suggestions</h4>
+              <div className="bg-[var(--background)]/50 p-4 rounded-lg min-h-[400px]">
+                {isWikiEditLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center space-x-2 text-[var(--muted)]">
+                      <div className="w-2 h-2 bg-[var(--accent-primary)] rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 bg-[var(--accent-primary)] rounded-full animate-pulse delay-75"></div>
+                      <div className="w-2 h-2 bg-[var(--accent-primary)] rounded-full animate-pulse delay-150"></div>
+                      <span className="ml-2 text-sm">Analyzing codebase and generating suggestions...</span>
+                    </div>
+                  </div>
+                ) : wikiEditResponse ? (
+                  <div className="prose prose-sm max-w-none">
+                    <Markdown content={wikiEditResponse} />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-[var(--muted)]">
+                    <p className="text-sm text-center">
+                      Click a quick action button or type your request to get AI-powered editing suggestions for your wiki page.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
