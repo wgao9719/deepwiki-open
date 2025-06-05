@@ -81,6 +81,10 @@ class WikiEditRequest(BaseModel):
     # Optional: Pass the complete wiki content (all pages) so that the model can reference
     entire_wiki_content: Optional[str] = Field(None, description="Concatenated markdown of the entire repository wiki for additional context")
 
+    # Memory and preferences for better continuity
+    edit_memory: Optional[List[dict]] = Field(None, description="Recent edit history for context and continuity")
+    user_preferences: Optional[dict] = Field(None, description="User preferences for writing style and formatting")
+
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 @app.post("/edit/suggestions")
@@ -188,10 +192,19 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
         tokens = count_tokens(total_content, request.provider == "ollama")
         logger.info(f"Wiki edit request size: {tokens} tokens")
 
+        # Log memory and preferences usage
+        memory_count = len(request.edit_memory) if request.edit_memory else 0
+        has_preferences = bool(request.user_preferences and any(request.user_preferences.values()))
+        logger.info(f"Memory context: {memory_count} previous edits, User preferences: {'Yes' if has_preferences else 'No'}")
+
         input_too_large = tokens > 8000
         if input_too_large:
             logger.warning(f"Request exceeds recommended token limit ({tokens} > 8000)")
 
+        # Try to prepare RAG retriever, but make it optional
+        request_rag = None
+        rag_available = False
+        
         try:
             request_rag = RAG(provider=request.provider, model=request.model)
 
@@ -210,15 +223,17 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
                 included_files = [unquote(file_pattern) for file_pattern in request.included_files.split('\n') if file_pattern.strip()]
 
             request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files)
+            rag_available = True
             logger.info(f"RAG retriever prepared for wiki editing: {request.repo_url}")
         except Exception as e:
-            logger.error(f"Error preparing RAG retriever: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error preparing RAG system: {str(e)}")
+            logger.warning(f"RAG retriever not available: {str(e)} - Proceeding with memory-only editing")
+            request_rag = None
+            rag_available = False
 
         rag_query = f"Wiki page editing context for '{request.current_page_title}' covering files: {', '.join(request.current_page_files)}. Edit request: {request.edit_request}"
 
         context_text = ""
-        if not input_too_large:
+        if not input_too_large and rag_available and request_rag:
             try:
                 retrieved_documents = request_rag(rag_query, language=request.language)
 
@@ -254,7 +269,7 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
                     context_text = "\n\n" + "-" * 20 + "\n\n".join(context_parts)
                     logger.info(f"Formatted context with {len(prioritized_docs)} prioritized docs and {len(other_docs)} additional docs")
             except Exception as e:
-                logger.error(f"Error in RAG retrieval: {str(e)}")
+                logger.warning(f"Error in RAG retrieval: {str(e)} - Proceeding without RAG context")
                 context_text = ""
 
         language_code = request.language or "en"
@@ -267,10 +282,52 @@ async def get_wiki_edit_suggestions(request_data: WikiEditRequest, http_request:
             "vi": "Vietnamese (Tiếng Việt)"
         }.get(language_code, "English")
 
+        # Build memory context from recent edits
+        memory_context = ""
+        if request.edit_memory and len(request.edit_memory) > 0:
+            memory_parts = []
+            for edit in request.edit_memory[-5:]:  # Use last 5 edits for context
+                timestamp = edit.get('timestamp', 0)
+                prompt = edit.get('prompt', '')
+                response = edit.get('response', '')
+                page_id = edit.get('pageId', '')
+                
+                if prompt and response:
+                    memory_parts.append(f"Previous edit on '{page_id}':\nUser: {prompt}\nAssistant: {response[:200]}..." if len(response) > 200 else f"Previous edit on '{page_id}':\nUser: {prompt}\nAssistant: {response}")
+            
+            if memory_parts:
+                memory_context = f"\n\n<previous_edits>\n{chr(10).join(memory_parts)}\n</previous_edits>"
+
+        # Build user preferences context
+        preferences_context = ""
+        if request.user_preferences:
+            prefs = request.user_preferences
+            pref_parts = []
+            
+            if prefs.get('writingStyle'):
+                pref_parts.append(f"Preferred writing style: {prefs['writingStyle']}")
+            
+            if prefs.get('preferredFormats'):
+                formats = ', '.join(prefs['preferredFormats'])
+                pref_parts.append(f"Preferred formats: {formats}")
+            
+            if prefs.get('commonInstructions'):
+                instructions = '; '.join(prefs['commonInstructions'])
+                pref_parts.append(f"Common user instructions: {instructions}")
+            
+            if pref_parts:
+                preferences_context = f"\n\n<user_preferences>\n{chr(10).join(pref_parts)}\n</user_preferences>"
+
         system_prompt = f"""<role>
 You are an expert technical writer and AI assistant specialized in editing and improving software documentation wikis.
 You provide direct, actionable editing suggestions based on codebase analysis. Your edits MUST have good fit with the existing codebase and not overlap too much with the existing wiki. You MUST produce the highest quality writing possible that is grounded in the actual codebase and looks as human-written as possible.
 IMPORTANT: You MUST respond in {language_name} language. If {request.highlighted_content} is not empty, the you can ONLY edit the text in {request.highlighted_content} and you CANNOT edit anything else or you will be fired.
+IMPORTANT: All edits that you suggest MUST be grounded in the actual codebase and stay relevant and on-topic with the current page content and the codebase. DO NOT allow the user to make edits that irrelevant or off-topic to the codebase.
+IMPORTANT: If a user's query is irrelevant or off-topic to the codebase, you MUST respond in this exact format:
+### IRRELEVANT_QUERY
+[Explanation of why the query is irrelevant or off-topic]
+I'm sorry, I cannot help you with that.
+IMPORTANT: Be very strict with irrelevant and off-topic queries. If a user's query is irrelevant or off-topic to the codebase, respond with why it is off-topic and say "I'm sorry, I cannot help you with that."
 </role>
 
 <guidelines>
@@ -286,6 +343,7 @@ IMPORTANT: You MUST respond in {language_name} language. If {request.highlighted
 - Use the full wiki context to provide novel and organic edits that make sense with respect to the existing codebase
 - Use the provided codebase context and the full wiki context to ensure accuracy and consistency across pages
 - Suggest concrete improvements, additions, or modifications
+- Be very strict and stringent with irrelevant and off-topic queries. Do NOT make or suggest edits that are irrelevant to the codebase ever, rather if the user's query is irrelevant or off-topic to the codebase just say "I'm sorry, I cannot help you with that."
 - Maintain existing markdown structure and formatting style
 - When suggesting code examples, use real code from the repository
 - Provide clear rationale for each suggestion
@@ -294,10 +352,12 @@ IMPORTANT: You MUST respond in {language_name} language. If {request.highlighted
 - If a <selected_chunk> is provided, ONLY modify that chunk according to the <edit_request>. All other content in the page must remain IDENTICAL.
 - Do NOT delete to or add to any other part of the document other than <selected_chunk> when <selected_chunk> is present.
 - Do NOT rewrite or re-format other parts of the document when <selected_chunk> is present.
+{memory_context}
+{preferences_context}
 </guidelines>
 
 <response_format>
-Return exactly two top-level markdown sections in this order:
+If the query is relevant, return exactly two top-level markdown sections in this order:
 
 ### Editing Suggestions
 * List each change with **What to change** [Specficic Description of the change] and **Why** [Rational based on Codebase and Wiki] bullets.
@@ -305,7 +365,12 @@ Return exactly two top-level markdown sections in this order:
 ### Revised Document
 The complete revised markdown for the entire page **after** applying every suggestion above.
 
-No extra prose before or after these two sections.
+If the query is irrelevant, return exactly this format:
+### IRRELEVANT_QUERY
+[Explanation of why the query is irrelevant or off-topic]
+I'm sorry, I cannot help you with that.
+
+No extra prose before or after these sections.
 </response_format>"""
 
         full_prompt = f"{system_prompt}\n\n"
@@ -322,7 +387,10 @@ No extra prose before or after these two sections.
         if context_text.strip():
             full_prompt += f"<codebase_context>\n{context_text}\n</codebase_context>\n\n"
         else:
-            full_prompt += "<note>Limited codebase context available.</note>\n\n"
+            if rag_available:
+                full_prompt += "<note>Limited codebase context available from RAG.</note>\n\n"
+            else:
+                full_prompt += "<note>RAG codebase context not available - using memory and wiki context only.</note>\n\n"
 
         full_prompt += f"<edit_request>\n{request.edit_request}\n</edit_request>\n\nAssistant: "
 
