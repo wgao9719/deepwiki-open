@@ -89,49 +89,49 @@ class GitHubReposFetcher:
             
             if github_token:
                 headers['Authorization'] = f'token {github_token}'
-                logger.info(f"🔐 [{timestamp}] Added authorization header for 5000/hour rate limit")
+                logger.info(f"[{timestamp}] Added authorization header for 5000/hour rate limit")
             else:
-                logger.info(f"🔓 [{timestamp}] Making unauthenticated requests (60/hour rate limit)")
+                logger.info(f"[{timestamp}] Making unauthenticated requests (60/hour rate limit)")
             
             async with aiohttp.ClientSession(connector=create_connector()) as session:
-                logger.info(f"📡 [{timestamp}] Starting to fetch owned repositories...")
+                logger.info(f"[{timestamp}] Starting to fetch owned repositories...")
                 await self._fetch_owned_repos(session, github_username, headers, owned_repositories)
-                logger.info(f"📊 [{timestamp}] Owned repos fetched: {len(owned_repositories)} repositories")
+                logger.info(f"[{timestamp}] Owned repos fetched: {len(owned_repositories)} repositories")
                 
-                logger.info(f"📡 [{timestamp}] Starting to fetch contributed repositories...")
+                logger.info(f"[{timestamp}] Starting to fetch contributed repositories...")
                 await self._fetch_contributed_repos(session, github_username, headers, collaborator_repositories)
-                logger.info(f"📊 [{timestamp}] After contributions: {len(collaborator_repositories)} contributed repositories")
+                logger.info(f"[{timestamp}] After contributions: {len(collaborator_repositories)} contributed repositories")
                 
                 # Fetch collaborator and organization member repositories (always try if we have a token)
                 if github_token:  # These endpoints require authentication
-                    logger.info(f"📡 [{timestamp}] Starting to fetch collaborator repositories...")
+                    logger.info(f"[{timestamp}] Starting to fetch collaborator repositories...")
                     await self._fetch_collaborator_repos(session, github_username, headers, collaborator_repositories)
-                    logger.info(f"📊 [{timestamp}] Collaborator repos fetched: {len(collaborator_repositories)} repositories")
+                    logger.info(f"[{timestamp}] Collaborator repos fetched: {len(collaborator_repositories)} repositories")
                     
-                    logger.info(f"📡 [{timestamp}] Starting to fetch organization repositories...")
+                    logger.info(f"[{timestamp}] Starting to fetch organization repositories...")
                     await self._fetch_organization_repos(session, github_username, headers, collaborator_repositories)
-                    logger.info(f"📊 [{timestamp}] Organization repos fetched: {len(collaborator_repositories)} repositories total")
+                    logger.info(f"[{timestamp}] Organization repos fetched: {len(collaborator_repositories)} repositories total")
                     
-                    logger.info(f"📡 [{timestamp}] Starting to fetch other repositories (starred, watched)...")
+                    logger.info(f"[{timestamp}] Starting to fetch other repositories (starred, watched)...")
                     await self._fetch_other_repos(session, github_username, headers, other_repositories)
-                    logger.info(f"📊 [{timestamp}] Other repos fetched: {len(other_repositories)} repositories")
+                    logger.info(f"[{timestamp}] Other repos fetched: {len(other_repositories)} repositories")
                 else:
-                    logger.warning(f"⚠️ [{timestamp}] Skipping collaborator/org/other repos - authentication required")
-                    logger.warning(f"⚠️ [{timestamp}] Provide GitHub token to access full repository list and higher rate limits")
+                    logger.warning(f"[{timestamp}] Skipping collaborator/org/other repos - authentication required")
+                    logger.warning(f"[{timestamp}] Provide GitHub token to access full repository list and higher rate limits")
             
             # Deduplicate and sort
-            logger.info(f"🔄 [{timestamp}] Deduplicating repositories...")
+            logger.info(f"[{timestamp}] Deduplicating repositories...")
             owned_repositories = self._deduplicate_repos(owned_repositories)
             collaborator_repositories = self._deduplicate_repos(collaborator_repositories)
             other_repositories = self._deduplicate_repos(other_repositories)
             
-            logger.info(f"✅ [{timestamp}] Final result: {len(owned_repositories)} owned repos, {len(collaborator_repositories)} collaborator repos for {github_username}")
+            logger.info(f"[{timestamp}] Final result: {len(owned_repositories)} owned repos, {len(collaborator_repositories)} collaborator repos for {github_username}")
             
             return owned_repositories, collaborator_repositories, other_repositories
             
         except Exception as e:
-            logger.error(f"💥 [{timestamp}] Error fetching repositories for {github_username}: {str(e)}")
-            logger.error(f"🔍 [{timestamp}] Exception type: {type(e).__name__}")
+            logger.error(f"[{timestamp}] Error fetching repositories for {github_username}: {str(e)}")
+            logger.error(f"[{timestamp}] Exception type: {type(e).__name__}")
             return [], [], []
     
     async def _fetch_owned_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
@@ -156,17 +156,17 @@ class GitHubReposFetcher:
                     'page': page
                 }
                 
-                logger.info(f"📡 [{timestamp}] API Call - GET {url} (page {page})")
+                logger.info(f"[{timestamp}] API Call - GET {url} (page {page})")
                 
                 async with session.get(url, headers=headers, params=params) as response:
                     logger.info(f"📊 [{timestamp}] Response status: {response.status}")
                     
                     if response.status != 200:
-                        logger.warning(f"⚠️ [{timestamp}] Failed to fetch owned repos for {username}: {response.status}")
+                        logger.warning(f"[{timestamp}] Failed to fetch owned repos for {username}: {response.status}")
                         if response.status == 403:
                             rate_limit_remaining = response.headers.get('X-RateLimit-Remaining')
                             rate_limit_reset = response.headers.get('X-RateLimit-Reset')
-                            logger.warning(f"🚫 [{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
+                            logger.warning(f"[{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
                         break
                     
                     repos = await response.json()
@@ -190,7 +190,7 @@ class GitHubReposFetcher:
                             'updated_at': repo['updated_at'],
                             'owner': repo['owner']['login'],
                             'is_owner': True,
-                            'is_collaborator': repo['fork'],  # Mark forks as collaborator repos
+                            'is_collaborator': repo['fork'], 
                             'is_fork': repo['fork']
                         })
                         total_fetched += 1
@@ -250,11 +250,11 @@ class GitHubReposFetcher:
                                         'relationship': 'base_of_fork'
                                     })
                     
-                    logger.info(f"✅ [{timestamp}] Added {len(repos)} repos from page {page}, total so far: {total_fetched}")
+                    logger.info(f"[{timestamp}] Added {len(repos)} repos from page {page}, total so far: {total_fetched}")
                     page += 1
                     
         except Exception as e:
-            logger.error(f"💥 [{timestamp}] Error fetching owned repos for {username}: {str(e)}")
+            logger.error(f"[{timestamp}] Error fetching owned repos for {username}: {str(e)}")
     
     async def _fetch_contributed_repos(self, session: aiohttp.ClientSession, username: str, headers: dict, repositories: list):
         """Fetch repositories the user has contributed to (via events)"""
@@ -278,15 +278,15 @@ class GitHubReposFetcher:
                     logger.info(f"📊 [{timestamp}] Events response status: {response.status}")
                     
                     if response.status != 200:
-                        logger.warning(f"⚠️ [{timestamp}] Failed to fetch events for {username}: {response.status}")
+                        logger.warning(f"[{timestamp}] Failed to fetch events for {username}: {response.status}")
                         if response.status == 403:
                             rate_limit_remaining = response.headers.get('X-RateLimit-Remaining')
                             rate_limit_reset = response.headers.get('X-RateLimit-Reset')
-                            logger.warning(f"🚫 [{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
+                            logger.warning(f"[{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
                         break
                     
                     events = await response.json()
-                    logger.info(f"📅 [{timestamp}] Received {len(events)} events on page {page}")
+                    logger.info(f"[{timestamp}] Received {len(events)} events on page {page}")
                     
                     if not events:
                         logger.info(f"🏁 [{timestamp}] No more events on page {page}, stopping")
@@ -343,14 +343,14 @@ class GitHubReposFetcher:
                 
                 if response.status == 200:
                     repo_data = await response.json()
-                    logger.info(f"✅ [{timestamp}] Successfully fetched details for {repo_full_name}")
+                    logger.info(f"[{timestamp}] Successfully fetched details for {repo_full_name}")
                     return repo_data
                 else:
-                    logger.warning(f"⚠️ [{timestamp}] Failed to fetch repo details for {repo_full_name}: {response.status}")
+                    logger.warning(f"[{timestamp}] Failed to fetch repo details for {repo_full_name}: {response.status}")
                     if response.status == 403:
                         rate_limit_remaining = response.headers.get('X-RateLimit-Remaining')
                         rate_limit_reset = response.headers.get('X-RateLimit-Reset')
-                        logger.warning(f"🚫 [{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
+                        logger.warning(f"[{timestamp}] Rate limit hit - Remaining: {rate_limit_remaining}, Reset: {rate_limit_reset}")
                     return None
                     
         except Exception as e:
