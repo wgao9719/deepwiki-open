@@ -104,6 +104,19 @@ export default function DeepWikiEditor({
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
 
+  // Function to format page ID into a user-friendly title
+  const formatPageTitle = (pageId: string): string => {
+    if (!pageId) return "Wiki Page"
+    
+    // Handle common patterns like "page-1", "section-2", "chapter-3", etc.
+    const formatted = pageId
+      .replace(/[-_]/g, ' ') // Replace hyphens and underscores with spaces
+      .replace(/\b\w/g, (char) => char.toUpperCase()) // Capitalize first letter of each word
+      .replace(/\b\d+\b/g, (match) => match) // Keep numbers as they are
+    
+    return formatted || "Wiki Page"
+  }
+
   // Sync currentPageId with pageId prop when it changes
   useEffect(() => {
     if (pageId && pageId !== currentPageId) {
@@ -702,17 +715,17 @@ export default function DeepWikiEditor({
             {owner && repo && (
               <Link
                 href={`/${owner}/${repo}`}
-                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
+                className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5 text-sm"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-3.5 h-3.5" />
                 Back to Wiki
               </Link>
             )}
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5"
+              className="flex items-center gap-1.5 text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5 text-sm"
             >
-              <FaHome className="w-4 h-4" /> Home
+              <FaHome className="w-3.5 h-3.5" /> Home
             </Link>
             <Separator orientation="vertical" className="h-6" />
             <h1 className="text-xl font-semibold text-[var(--foreground)]">DeepWiki Editor</h1>
@@ -764,9 +777,9 @@ export default function DeepWikiEditor({
             <button 
               onClick={handleSave} 
               disabled={saveStatus === 'saving'}
-              className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-japanese flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               Save
             </button>
           </div>
@@ -842,7 +855,7 @@ export default function DeepWikiEditor({
             <div className="flex-none px-6 py-4 border-b border-[var(--border-color)]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{currentPageId || "Wiki Page"}</h1>
+                  <h1 className="text-xl font-semibold text-[var(--foreground)]">{formatPageTitle(currentPageId)}</h1>
                 </div>
                 <div className="flex items-center space-x-2">
                   {!leftSidebarVisible && (
@@ -941,9 +954,9 @@ export default function DeepWikiEditor({
                     <div className="flex-none p-6 border-t border-[var(--border-color)]">
                       {/* Highlight controls */}
                       {highlightedRanges.length > 0 && (
-                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                           <div className="flex items-center justify-between">
-                                                         <span className="text-sm text-yellow-800 dark:text-yellow-200">
+                            <span className="text-sm text-yellow-800 dark:text-yellow-200">
                                {highlightedRanges.length} text section{highlightedRanges.length > 1 ? 's' : ''} being regenerated
                              </span>
                             <button
@@ -955,7 +968,7 @@ export default function DeepWikiEditor({
                           </div>
                         </div>
                       )}
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 items-end">
                         <Textarea
                           value={llmPrompt}
                           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setLlmPrompt(e.target.value)}
@@ -969,12 +982,12 @@ export default function DeepWikiEditor({
                             }
                           }}
                           placeholder="Ask the AI assistant..."
-                          className="flex-1 min-h-[40px] max-h-32 border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm"
+                          className="flex-1 min-h-[56px] max-h-32 px-4 py-3 rounded-lg border-[var(--border-color)] focus:border-[var(--accent)] focus:ring-[var(--accent)]/20 bg-[var(--background)] text-[var(--foreground)] text-sm leading-relaxed resize-none transition-all duration-200"
                         />
                         <Button
                           onClick={handleLlmSubmit}
                           disabled={!llmPrompt.trim() || isProcessing}
-                          className="btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="btn-japanese flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-[44px] px-3"
                         >
                           {isProcessing ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
