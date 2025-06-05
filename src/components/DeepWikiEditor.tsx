@@ -307,20 +307,51 @@ export default function DeepWikiEditor({
     if (!llmPrompt.trim()) return
 
     setIsProcessing(true)
+    setLlmResponse("")
 
-    // TODO: Replace this mock with your actual LLM call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      // Build repo URL if possible
+      const repoUrl = owner && repo ? `https://github.com/${owner}/${repo}` : "";
 
-    const mockResponse = selectedText
-      ? `Here's an improved version of the selected text:\n\n"${selectedText.text.replace(/\b\w+\b/g, (word) =>
-          Math.random() > 0.7 ? `${word} (enhanced)` : word,
-        )}"`
-      :
-        "I can help you improve your documentation. Please select some text in the editor to get started."
+      const requestBody = {
+        repo_url: repoUrl,
+        current_page_title: pageId || "Current Page",
+        current_page_content: content,
+        current_page_files: [],
+        edit_request: llmPrompt,
+      };
 
-    setLlmResponse(mockResponse)
-    setChatHistory(prev => [...prev, { prompt: llmPrompt, response: mockResponse }])
-    setIsProcessing(false)
+      const response = await fetch("/api/wiki/edit/suggestions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let completedText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        completedText += decoder.decode(value, { stream: true });
+        setLlmResponse(completedText);
+      }
+
+      setChatHistory(prev => [...prev, { prompt: llmPrompt, response: completedText }]);
+
+    } catch (error) {
+      console.error("LLM request error", error);
+      setLlmResponse("Error generating suggestions. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   const applyLlmSuggestion = () => {
