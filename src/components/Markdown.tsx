@@ -5,12 +5,16 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import Mermaid from './Mermaid';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface MarkdownProps {
   content: string;
 }
 
 const Markdown: React.FC<MarkdownProps> = ({ content }) => {
+  const router = useRouter();
+  
   // Define markdown components
   const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
     p({ children, ...props }: { children?: React.ReactNode }) {
@@ -58,6 +62,35 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
       return <li className="mb-2 text-sm leading-relaxed dark:text-white" {...props}>{children}</li>;
     },
     a({ children, href, ...props }: { children?: React.ReactNode; href?: string }) {
+      // Handle repository file links
+      if (href?.startsWith('/') || href?.startsWith('./') || href?.startsWith('../')) {
+        // Get the current URL path segments
+        const pathSegments = window.location.pathname.split('/');
+        const owner = pathSegments[1];
+        const repo = pathSegments[2];
+        
+        // Clean up the href path
+        const cleanPath = href.replace(/^[./]+/, '').replace(/\.md$/, '');
+        
+        // Construct the new path
+        const newPath = `/${owner}/${repo}/${cleanPath}`;
+        
+        return (
+          <Link
+            href={newPath}
+            className="text-purple-600 dark:text-purple-400 hover:underline font-medium"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push(newPath);
+            }}
+            {...props}
+          >
+            {children}
+          </Link>
+        );
+      }
+      
+      // Handle external links
       return (
         <a
           href={href}

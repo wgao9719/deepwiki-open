@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save, ChevronRight, Sparkles, Send, RefreshCw, PanelLeft, PanelRight,
-  Bot, ChevronDown, ChevronUp, User, Quote, Check, X, ArrowLeft,
+  Bot, ChevronDown, ChevronUp, User, Quote, Check, X, ArrowLeft, FileText,
 } from "lucide-react"
 import Markdown from "./Markdown"
 import WikiTreeView from "./WikiTreeView"
@@ -520,6 +520,9 @@ export default function DeepWikiEditor({
   const handleLlmSubmit = async () => {
     if (!llmPrompt.trim() && wikiMatches.length === 0 && highlightedRanges.length === 0) return
 
+    // Add user's message to chat history immediately
+    setChatHistory(prev => [...prev, { prompt: llmPrompt, response: '' }]);
+    
     setIsProcessing(true)
     setLlmResponse("")
 
@@ -567,28 +570,7 @@ export default function DeepWikiEditor({
       });
 
       if (!response.ok || !response.body) {
-        // Get more detailed error information
-        let errorMessage = `Request failed with status ${response.status}`
-        try {
-          const errorText = await response.text()
-          if (errorText) {
-            const errorData = JSON.parse(errorText)
-            errorMessage = errorData.detail || errorText || errorMessage
-          }
-        } catch {
-          // If we can't parse the error, just use the status
-        }
-        
-        // Provide user-friendly error messages
-        if (response.status === 500) {
-          errorMessage = "The AI service is experiencing issues. Your memory will still be saved. Please try again in a moment."
-        } else if (response.status === 429) {
-          errorMessage = "Too many requests. Please wait a moment before trying again."
-        } else if (response.status === 401 || response.status === 403) {
-          errorMessage = "Authentication error. Please check your credentials."
-        }
-        
-        throw new Error(errorMessage);
+        throw new Error(`Request failed with status ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -610,8 +592,12 @@ export default function DeepWikiEditor({
 
       // Check if this is an irrelevant query response
       if (completedText.includes("### IRRELEVANT_QUERY")) {
-        // For irrelevant queries, just show the response and don't modify the document
-        setChatHistory(prev => [...prev, { prompt: llmPrompt, response: completedText }]);
+        // Update the last chat message with the response
+        setChatHistory(prev => {
+          const newHistory = [...prev];
+          newHistory[newHistory.length - 1].response = completedText;
+          return newHistory;
+        });
         setLlmResponse(completedText);
         setLlmPrompt("");
         
@@ -627,6 +613,13 @@ export default function DeepWikiEditor({
         if (revisedPart.startsWith("###")) {
           revisedPart = revisedPart.replace(/^#+\s*/m, "");
         }
+
+        // Update the last chat message with the response
+        setChatHistory(prev => {
+          const newHistory = [...prev];
+          newHistory[newHistory.length - 1].response = suggestionsPart;
+          return newHistory;
+        });
 
         // Preserve a snapshot of the content **before** applying any change so that
         // the user can still revert      
@@ -655,7 +648,15 @@ export default function DeepWikiEditor({
             highlightedRanges.forEach((range, idx) => {
               const start = range.start + offset;
               const end = range.end + offset;
-              const replacement = replacements[idx];
+              let replacement = replacements[idx];
+              
+              // Fix unclosed code blocks by ensuring proper markdown code block syntax
+              const openCodeBlocks = (replacement.match(/```/g) || []).length;
+              if (openCodeBlocks % 2 !== 0) {
+                // If there's an odd number of code block markers, close the last one
+                replacement = replacement.replace(/```([^`]*)$/, '```$1\n```');
+              }
+              
               assembled = assembled.slice(0, start) + replacement + assembled.slice(end);
               // Update offset so subsequent ranges stay accurate
               offset += replacement.length - (end - start);
@@ -675,7 +676,6 @@ export default function DeepWikiEditor({
           setHighlightedRanges([])
         }
 
-        setChatHistory(prev => [...prev, { prompt: llmPrompt, response: suggestionsPart }]);
         setLlmResponse(suggestionsPart);
 
         // Add to memory and extract preferences
@@ -688,26 +688,22 @@ export default function DeepWikiEditor({
     } catch (error) {
       console.error("Error submitting to LLM:", error)
       
-      // Still save the user's prompt to memory even if the request failed
-      // This ensures continuity when they try again
       const errorResponse = `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Your message has been saved and I'll remember it for future edits.`
       
-      // Add to memory even on error
+      // Update the last chat message with the error
+      setChatHistory(prev => {
+        const newHistory = [...prev];
+        newHistory[newHistory.length - 1].response = errorResponse;
+        return newHistory;
+      });
+      
       addToEditMemory(llmPrompt, errorResponse)
       extractUserPreferences(llmPrompt)
       
-      // Add to chat history to show the error
-      setChatHistory(prev => [...prev, { 
-        prompt: llmPrompt, 
-        response: errorResponse
-      }])
-      
       setLlmResponse(errorResponse)
-      
-      // Clear the prompt so user can try again easily
-      setLlmPrompt('')
     } finally {
       setIsProcessing(false)
+      setLlmPrompt('')
     }
   }
 
@@ -931,6 +927,17 @@ export default function DeepWikiEditor({
       <header className="flex-none z-50 bg-[var(--card-bg)] border-b border-[var(--border-color)] px-6 py-4 shadow-custom">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-6">
+            {/* Fixed Left Sidebar Toggle Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setLeftSidebarVisible(!leftSidebarVisible)}
+              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-2"
+              title="Toggle Pages Sidebar"
+            >
+              <FileText className="w-4 h-4" />
+            </Button>
+            
             {owner && repo && (
               <Link
                 href={`/${owner}/${repo}`}
@@ -1004,6 +1011,17 @@ export default function DeepWikiEditor({
               <Save className="w-3.5 h-3.5" />
               Save
             </button>
+
+            {/* Fixed Right Sidebar Toggle Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRightSidebarVisible(!rightSidebarVisible)}
+              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-2"
+              title="Toggle AI Assistant"
+            >
+              <Bot className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       </header>
@@ -1037,14 +1055,6 @@ export default function DeepWikiEditor({
             <div className="px-6 py-4 border-b border-[var(--border-color)]">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-[var(--foreground)]">{repo ?? "Wiki"}</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setLeftSidebarVisible(false)}
-                  className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-1"
-                >
-                  <PanelLeft className="w-4 h-4" />
-                </Button>
               </div>
             </div>
 
@@ -1084,28 +1094,6 @@ export default function DeepWikiEditor({
                     </div>
                   )}
                 </div>
-                <div className="flex items-center space-x-2">
-                  {!leftSidebarVisible && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setLeftSidebarVisible(true)}
-                      className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                    >
-                      <PanelLeft className="w-4 h-4" />
-                    </Button>
-                  )}
-                  {!rightSidebarVisible && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setRightSidebarVisible(true)}
-                      className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                    >
-                      <PanelRight className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -1114,7 +1102,7 @@ export default function DeepWikiEditor({
               {/* Side-by-side editor and live preview */}
               <div className="flex-1 flex overflow-hidden">
                 {/* Markdown editor */}
-                <div className="w-1/2 h-full bg-[var(--background)] relative">
+                <div className="w-1/2 h-full bg-[var(--background)] relative overflow-hidden">
                   {!hasManualEditingAccess && (
                     <div className="absolute top-4 right-4 z-10 pointer-events-none">
                       <div className="text-center p-4 bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)] shadow-lg max-w-xs pointer-events-auto">
@@ -1136,7 +1124,7 @@ export default function DeepWikiEditor({
                       onChange={hasManualEditingAccess ? (e: React.ChangeEvent<HTMLTextAreaElement>) => setContent(e.target.value) : undefined}
                       onSelect={handleTextSelection}
                       readOnly={!hasManualEditingAccess}
-                      className={`min-h-[600px] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm ${
+                      className={`min-h-[600px] max-h-[calc(100vh-200px)] border-none resize-none focus:ring-0 text-[var(--foreground)] leading-relaxed p-6 bg-[var(--background)] h-full font-mono text-sm ${
                         !hasManualEditingAccess ? 'cursor-text' : ''
                       }`}
                       placeholder={hasManualEditingAccess ? "Start editing your documentation..." : "Content is read-only - select text and use AI assistant for edits"}
@@ -1145,7 +1133,7 @@ export default function DeepWikiEditor({
                 </div>
 
                 {/* Rendered preview */}
-                <div className="w-1/2 h-full border-l border-[var(--border-color)] bg-[var(--background)]">
+                <div className="w-1/2 h-full border-l border-[var(--border-color)] bg-[var(--background)] overflow-hidden">
                   <ScrollArea className="h-full">
                     <div className="p-6">
                       <Markdown content={highlightedContent} />
@@ -1164,14 +1152,6 @@ export default function DeepWikiEditor({
                         <Bot className="w-4 h-4 text-[var(--accent)] mr-2" />
                         <h3 className="text-sm font-medium text-[var(--foreground)]">AI Assistant</h3>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRightSidebarVisible(false)}
-                        className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] p-1"
-                      >
-                        <PanelRight className="w-4 h-4" />
-                      </Button>
                     </div>
 
                     {/* Chat History */}
@@ -1188,15 +1168,26 @@ export default function DeepWikiEditor({
                             <div className="w-6 h-6 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-none">
                               <Bot className="w-4 h-4 text-[var(--accent)]" />
                             </div>
-                            <div className={`flex-1 text-sm text-[var(--foreground)] whitespace-pre-wrap ${
-                              chat.response.includes("### IRRELEVANT_QUERY") 
-                                ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3" 
-                                : ""
-                            }`}>
-                              {chat.response.includes("### IRRELEVANT_QUERY")
-                                ? chat.response.replace("### IRRELEVANT_QUERY", "⚠️ Irrelevant Query")
-                                : chat.response}
-                            </div>
+                            {chat.response ? (
+                              <div className={`flex-1 ${
+                                chat.response.includes("### IRRELEVANT_QUERY") 
+                                  ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3" 
+                                  : ""
+                              }`}>
+                                <Markdown 
+                                  content={
+                                    chat.response.includes("### IRRELEVANT_QUERY")
+                                      ? chat.response.replace("### IRRELEVANT_QUERY", "⚠️ Irrelevant Query")
+                                      : chat.response
+                                  } 
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex-1 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                                <div className="w-4 h-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent"></div>
+                                Generating response...
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
